@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 1 · Painel (visão geral de todas as histórias) */
+    .lista-mini { list-style: none; margin: 0; padding: 0; }
+    .lista-mini li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--borda); }
+    .lista-mini li:last-child { border-bottom: 0; }
+    .lista-mini .info { flex: 1; min-width: 0; }
+    .lista-mini .info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lista-mini .tira { width: 150px; flex: none; }
+    .ponto { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .atalhos { display: flex; gap: 10px; flex-wrap: wrap; }
+  </style>
+</head>
+<body data-tela="dashboard" data-titulo="Painel">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div>
+        <h2 id="saudacao">Bom dia</h2>
+        <p>Resumo do que está renderizando agora, da capacidade disponível e do que precisa da sua atenção.</p>
+      </div>
+      <div class="atalhos" id="atalhos"></div>
+    </div>
+
+    <section class="grade g4" id="kpis"></section>
+
+    <section class="grade g-2-1">
+      <div class="cartao">
+        <header><h3>Jobs em andamento e na fila</h3><a href="fila.html" id="ver-fila">Ver fila completa →</a></header>
+        <ul class="lista-mini" id="jobs"></ul>
+      </div>
+      <div class="cartao">
+        <header><h3>Alertas recentes</h3><a href="alertas.html" id="ver-alertas">Ver todos →</a></header>
+        <ul class="lista-mini" id="alertas"></ul>
+      </div>
+    </section>
+
+    <section class="cartao">
+      <header><h3>Estações</h3><a href="monitoramento.html" id="ver-monitor">Abrir monitoramento →</a></header>
+      <div class="grade g4" id="estacoes"></div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const perfil = db.sessao.perfil;
+    const h = new Date().getHours();
+    document.getElementById('saudacao').textContent = `${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}, ${db.sessao.nome.split(' ')[0]}`;
+
+    // Atalhos e links respeitam o perfil
+    const atalhos = [];
+    if (RT.podeVer('novo-job', perfil)) atalhos.push('<a class="btn btn-primario" href="novo-job.html">+ Novo job</a>');
+    if (RT.podeVer('custos', perfil)) atalhos.push('<a class="btn" href="custos.html">Ver custos</a>');
+    if (RT.podeVer('api', perfil)) atalhos.push('<a class="btn" href="api.html">Chaves de API</a>');
+    document.getElementById('atalhos').innerHTML = atalhos.join('');
+    [['ver-fila', 'fila'], ['ver-alertas', 'alertas'], ['ver-monitor', 'monitoramento']].forEach(([id, t]) => { if (!RT.podeVer(t, perfil)) document.getElementById(id).remove(); });
+
+    const ativos = db.jobs.filter((j) => j.status === 'Renderizando');
+    const fila = db.jobs.filter((j) => j.status === 'Na fila' || j.status === 'Pausado');
+    const gpusLocais = db.estacoes.filter((e) => e.tipo === 'local').flatMap((e) => e.gpus);
+    const gpusLocaisUso = gpusLocais.filter((g) => g.uso > 20).length;
+    const horasMes = db.consumoMensal[db.consumoMensal.length - 1].horas;
+
+    document.getElementById('kpis').innerHTML = `
+      <div class="kpi destaque"><span>Renderizando agora</span><strong>${ativos.length}</strong><small>${fila.length} na fila ou pausados</small></div>
+      <div class="kpi"><span>GPUs locais em uso</span><strong>${gpusLocaisUso}/${gpusLocais.length}</strong><small>RenderStation</small></div>
+      <div class="kpi"><span>GPUs na nuvem em uso</span><strong>${db.nuvem.gpusEmUso}/${db.nuvem.gpusTotais}</strong><small>RenderCloud · SP1</small></div>
+      <div class="kpi"><span>Horas de GPU em novembro</span><strong>${horasMes} h</strong><small>${ui.brl(horasMes * db.tarifas.nuvemHoraGPU)} estimados</small></div>`;
+
+    const ordemPrio = { Urgente: 0, Alta: 1, Normal: 2, Baixa: 3 };
+    const lista = [...ativos, ...fila].sort((a, b) => (a.status === 'Renderizando' ? -1 : 1) - (b.status === 'Renderizando' ? -1 : 1) || ordemPrio[a.prioridade] - ordemPrio[b.prioridade]);
+    document.getElementById('jobs').innerHTML = lista.map((j) => `
+      <li><div class="info"><strong><a href="job.html?id=${j.id}">${j.id}</a> · ${ui.esc(j.arquivo)}</strong>
+        <small>${ui.esc(RT.projeto(j.projeto)?.nome || '')} · ${j.destino} · ETA ${j.eta}</small></div>
+        ${ui.tira(j.progresso, j.status, 24, 'Frames de ' + j.id)}
+        ${ui.badge(j.status)}</li>`).join('') || '<li class="suave">Nenhum job ativo.</li>';
+
+    const coresAlerta = { erro: 'var(--vermelho)', limite: 'var(--laranja)', conclusao: 'var(--verde)', sistema: 'var(--texto-2)' };
+    document.getElementById('alertas').innerHTML = db.alertas.slice(0, 5).map((a) => `
+      <li><span class="ponto" style="background:${coresAlerta[a.tipo]}"></span>
+        <div class="info"><strong>${ui.esc(a.titulo)}</strong><small>${a.estacao} · ${a.data.slice(5)}</small></div>
+        ${a.lido ? '' : '<span class="badge badge-laranja">novo</span>'}</li>`).join('');
+
+    document.getElementById('estacoes').innerHTML = db.estacoes.map((e) => {
+      const media = Math.round(e.gpus.reduce((s, g) => s + g.uso, 0) / e.gpus.length);
+      const tmax = Math.max(...e.gpus.map((g) => g.temp));
+      return `<div class="kpi"><div class="linha entre"><b>${e.id}</b>${ui.badge(e.status)}</div>
+        <small>${ui.esc(e.local)}</small>
+        <div style="margin-top:10px" class="linha entre"><small>GPU média</small><b>${media}%</b></div>${ui.barra(media, media > db.limites.gpuUso ? 'vermelho' : '')}
+        <div class="linha entre" style="margin-top:6px"><small>Temp. máx.</small><b style="color:${tmax > db.limites.gpuTemp ? 'var(--vermelho)' : 'inherit'}">${tmax} °C</b></div></div>`;
+    }).join('');
+  }
+  </script>
+</body>
+</html>

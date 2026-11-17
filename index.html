@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar · recTech</title>
+  <link rel="icon" href="assets/img/logo.svg">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <style>
+    /* PARTE 1 · Tela de login (história 01: acesso com credenciais válidas) */
+    body { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
+    .lado-marca { background: var(--marinho); color: #c9d6e3; padding: 48px 56px; border-right: 1px solid var(--borda); display: flex; flex-direction: column; justify-content: space-between;
+      background-image: radial-gradient(circle at 85% 15%, rgba(224,123,58,.25), transparent 45%), radial-gradient(circle at 10% 90%, rgba(43,168,184,.18), transparent 40%); }
+    .lado-marca .marca { padding: 0; border: 0; font-size: 26px; }
+    .lado-marca .marca img { width: 36px; height: 36px; }
+    .lado-marca h2 { color: #fff; font-size: 32px; letter-spacing: -.6px; max-width: 460px; margin-bottom: 14px; }
+    .lado-marca p { max-width: 440px; font-size: 15px; }
+    .produtos { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+    .produtos div { border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 12px 14px; min-width: 190px; }
+    .produtos strong { color: #fff; display: block; }
+    .produtos span { font-size: 12.5px; }
+    .lado-form { display: grid; place-items: center; padding: 32px 20px; }
+    .form { width: min(380px, 100%); }
+    .form h1 { font-size: 24px; margin-bottom: 4px; }
+    .form > p { color: var(--texto-2); margin-bottom: 22px; }
+    .form .btn-primario { width: 100%; justify-content: center; padding: 10px; font-size: 14px; }
+    .demo { margin-top: 22px; font-size: 12.5px; }
+    .rodape-login { font-size: 12px; color: #7f95ab; }
+    @media (max-width: 860px) { body { grid-template-columns: 1fr; } .lado-marca { padding: 28px 20px; } .lado-marca h2 { font-size: 24px; } .produtos { display: none; } }
+  </style>
+</head>
+<body data-tela="login">
+  <section class="lado-marca">
+    <div class="marca"><img src="assets/img/logo.svg" alt=""><span>rec<b>Tech</b></span></div>
+    <div>
+      <h2>Renderização de vídeo e 3D do estúdio local ao cluster em nuvem.</h2>
+      <p>Envie projetos, organize a fila, acompanhe GPUs e baixe as entregas em um só lugar.</p>
+      <div class="produtos">
+        <div><strong>RenderStation</strong><span>Servidor dedicado no estúdio · 5× RTX 5090</span></div>
+        <div><strong>RenderCloud</strong><span>GPUs sob demanda, cobrança por hora</span></div>
+      </div>
+    </div>
+    <div class="rodape-login">Protótipo de telas · Gerenciamento de Projetos · PUC Campinas</div>
+  </section>
+
+  <section class="lado-form">
+    <form class="form" id="form-login" novalidate>
+      <h1>Entrar</h1>
+      <p>Use o e-mail corporativo cadastrado pelo administrador.</p>
+      <div class="campo">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" autocomplete="username" placeholder="nome@empresa.com.br">
+      </div>
+      <div class="campo">
+        <label for="senha">Senha</label>
+        <input type="password" id="senha" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div id="erro" class="aviso aviso-erro" hidden></div>
+      <div class="campo" style="margin-top:14px"><button class="btn btn-primario" type="submit">Entrar</button></div>
+
+      <div class="aviso aviso-info demo">
+        <b>Modo demonstração:</b> escolha um perfil para ver o sistema com as permissões dele.
+        <div class="campo" style="margin:8px 0 0">
+          <select id="perfil-demo" aria-label="Perfil de demonstração"></select>
+        </div>
+        <button class="btn btn-peq" type="button" id="entrar-demo" style="margin-top:8px">Entrar como este perfil</button>
+      </div>
+    </form>
+  </section>
+
+  <script src="assets/js/dados.js"></script>
+  <script src="assets/js/layout.js"></script>
+  <script>
+    const form = document.getElementById('form-login');
+    const erro = document.getElementById('erro');
+    const sel = document.getElementById('perfil-demo');
+    sel.innerHTML = RT.db.usuarios.filter((u) => u.ativo).map((u) => `<option value="${u.id}">${u.perfil} · ${u.nome}</option>`).join('');
+
+    function entrar(u) {
+      RT.db.sessao = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil };
+      RT.salvar();
+      location.href = 'telas/dashboard.html';
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim().toLowerCase();
+      const senha = document.getElementById('senha').value;
+      const u = RT.db.usuarios.find((x) => x.email.toLowerCase() === email);
+      erro.hidden = true;
+      if (!email || !senha) { erro.textContent = 'Preencha e-mail e senha.'; erro.hidden = false; return; }
+      if (!u) { erro.textContent = 'E-mail não cadastrado. Peça acesso ao administrador do estúdio.'; erro.hidden = false; return; }
+      if (!u.ativo) { erro.textContent = 'Este usuário está desativado.'; erro.hidden = false; return; }
+      // Protótipo: qualquer senha com 4+ caracteres é aceita
+      if (senha.length < 4) { erro.textContent = 'Credenciais inválidas.'; erro.hidden = false; return; }
+      entrar(u);
+    });
+    document.getElementById('entrar-demo').onclick = () => entrar(RT.db.usuarios.find((u) => u.id === sel.value));
+  </script>
+</body>
+</html>
