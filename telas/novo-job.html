@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Novo job · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 2 · Novo job (histórias 02 e 04) */
+    .passos { display: flex; gap: 0; counter-reset: p; margin-bottom: 4px; }
+    .passos li { list-style: none; flex: 1; position: relative; padding-top: 34px; text-align: center; font-size: 12.5px; color: var(--texto-2); counter-increment: p; }
+    .passos li::before { content: counter(p); position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 26px; height: 26px; border-radius: 50%; background: var(--trilho); color: var(--texto-2); display: grid; place-items: center; font-weight: 700; z-index: 1; }
+    .passos li::after { content: ''; position: absolute; top: 12px; left: 0; right: 0; height: 2px; background: var(--trilho); }
+    .passos li:first-child::after { left: 50%; } .passos li:last-child::after { right: 50%; }
+    .passos li.feito::before { background: #1f7a52; color: #fff; content: '✓'; }
+    .passos li.atual { color: var(--titulo); font-weight: 600; }
+    .passos li.atual::before { background: var(--laranja-acao); color: #fff; }
+    .passos ol { padding: 0; margin: 0; display: flex; width: 100%; }
+    .zona { border: 2px dashed var(--borda-forte); border-radius: 12px; padding: 30px; text-align: center; background: var(--superficie-2); cursor: pointer; }
+    .zona:hover, .zona.sobre { border-color: var(--laranja); background: var(--laranja-suave); }
+    .arquivos li { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--borda); }
+    .arquivos { list-style: none; padding: 0; margin: 12px 0 0; }
+    .arquivos .nome { flex: 1; font-family: var(--mono); font-size: 12.5px; }
+    .rodape-passo { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--borda); }
+    dl.revisao { display: grid; grid-template-columns: 180px 1fr; gap: 8px 16px; margin: 0; }
+    dl.revisao dt { color: var(--texto-2); } dl.revisao dd { margin: 0; font-weight: 600; }
+    .opcoes.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 760px) { .opcoes.tres { grid-template-columns: 1fr; } dl.revisao { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-tela="novo-job" data-titulo="Novo job de renderização">
+  <main id="conteudo">
+    <div class="cartao">
+      <div class="passos"><ol>
+        <li data-p="1">Projeto e arquivos</li><li data-p="2">Configuração</li><li data-p="3">Destino e prioridade</li><li data-p="4">Revisão</li>
+      </ol></div>
+    </div>
+
+    <!-- PASSO 1 -->
+    <section class="cartao passo" data-passo="1">
+      <header><h3>1. Projeto e arquivos</h3></header>
+      <div class="grade g2">
+        <div class="campo">
+          <label for="projeto">Projeto</label>
+          <select id="projeto"></select>
+          <small>Os arquivos ficam vinculados ao projeto e à versão (histórico em Projetos e entregas).</small>
+        </div>
+        <div class="campo">
+          <label for="software">Software de origem</label>
+          <select id="software">
+            <option>Blender</option><option>Cinema 4D</option><option>Unreal Engine</option><option>Maya</option><option>Premiere Pro</option>
+          </select>
+        </div>
+      </div>
+      <div class="zona" id="zona" tabindex="0" role="button" aria-label="Enviar pacote do projeto">
+        <strong>Arraste o pacote do projeto aqui</strong><br>
+        <small>ou clique para escolher (.zip, .blend, .c4d, .uproject, .mb, .prproj + texturas)</small>
+        <input type="file" id="input-arq" multiple hidden>
+      </div>
+      <div class="linha" style="margin-top:10px">
+        <button class="btn btn-peq" type="button" id="ex-ok">Usar pacote de exemplo (válido)</button>
+        <button class="btn btn-peq" type="button" id="ex-erro">Usar pacote de exemplo (com problema)</button>
+      </div>
+      <ul class="arquivos" id="lista-arq"></ul>
+      <div id="validacao" style="margin-top:12px"></div>
+      <div class="rodape-passo"><a class="btn" href="fila.html">Cancelar</a><button class="btn btn-primario" data-ir="2" id="p1-ok" disabled>Continuar</button></div>
+    </section>
+
+    <!-- PASSO 2 -->
+    <section class="cartao passo" data-passo="2" hidden>
+      <header><h3>2. Configuração da renderização</h3></header>
+      <div class="grade g3">
+        <div class="campo"><label for="frame-ini">Frame inicial</label><input type="number" id="frame-ini" value="1" min="0"></div>
+        <div class="campo"><label for="frame-fim">Frame final</label><input type="number" id="frame-fim" value="240" min="1"></div>
+        <div class="campo"><label for="fps">FPS</label><select id="fps"><option>24</option><option>25</option><option selected>30</option><option>60</option></select></div>
+        <div class="campo"><label for="resolucao">Resolução</label><select id="resolucao"><option>1920×1080</option><option selected>3840×2160</option><option>2048×858</option><option>1080×1920 (vertical)</option></select></div>
+        <div class="campo"><label for="formato">Formato de saída</label><select id="formato"><option>MP4 (H.264)</option><option>MP4 (H.265)</option><option>ProRes 4444</option><option>EXR</option><option>EXR + MP4</option></select></div>
+        <div class="campo"><label for="amostras">Qualidade</label><select id="amostras"><option>Preview (rápido)</option><option selected>Final</option><option>Final + denoise</option></select></div>
+      </div>
+      <div id="erro-frames" class="erro-campo" hidden>O frame final precisa ser maior que o inicial.</div>
+      <div class="rodape-passo"><button class="btn" data-ir="1">Voltar</button><button class="btn btn-primario" data-ir="3" id="p2-ok">Continuar</button></div>
+    </section>
+
+    <!-- PASSO 3 -->
+    <section class="cartao passo" data-passo="3" hidden>
+      <header><h3>3. Onde processar e com qual prioridade</h3></header>
+      <label>Destino do processamento</label>
+      <div class="opcoes tres" id="destinos">
+        <label class="opcao"><input type="radio" name="destino" value="Local" checked><div><strong>Local · RenderStation</strong><span>Usa as GPUs do estúdio. Sem custo por hora de nuvem.</span><br><small id="cap-local"></small></div></label>
+        <label class="opcao"><input type="radio" name="destino" value="Nuvem"><div><strong>Nuvem · RenderCloud</strong><span>Escala sob demanda, cobrado por hora de GPU.</span><br><small id="cap-nuvem"></small></div></label>
+        <label class="opcao"><input type="radio" name="destino" value="Híbrido"><div><strong>Híbrido</strong><span>Começa no local e manda o excedente para a nuvem.</span><br><small>Melhor para prazos curtos.</small></div></label>
+      </div>
+      <div class="grade g2" style="margin-top:16px">
+        <div class="campo"><label for="prioridade">Prioridade</label>
+          <select id="prioridade"><option>Urgente</option><option>Alta</option><option selected>Normal</option><option>Baixa</option></select>
+          <small>Urgente passa na frente de toda a fila. Operadores podem mudar depois.</small></div>
+        <div class="campo"><label for="prazo">Prazo de entrega (opcional)</label><input type="date" id="prazo"></div>
+      </div>
+      <div id="estimativa" class="aviso aviso-info"></div>
+      <div class="rodape-passo"><button class="btn" data-ir="2">Voltar</button><button class="btn btn-primario" data-ir="4">Revisar</button></div>
+    </section>
+
+    <!-- PASSO 4 -->
+    <section class="cartao passo" data-passo="4" hidden>
+      <header><h3>4. Revisão</h3></header>
+      <dl class="revisao" id="revisao"></dl>
+      <div class="rodape-passo"><button class="btn" data-ir="3">Voltar</button><button class="btn btn-primario" id="enviar">Adicionar à fila</button></div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    let arquivos = []; let passoAtual = 1;
+
+    $('projeto').innerHTML = db.projetos.map((p) => `<option value="${p.id}">${ui.esc(p.nome)} · ${ui.esc(p.cliente)}</option>`).join('');
+    const preId = new URLSearchParams(location.search).get('projeto');
+    if (preId) $('projeto').value = preId;
+    const sincSoftware = () => { $('software').value = RT.projeto($('projeto').value).software; };
+    $('projeto').onchange = sincSoftware; sincSoftware();
+
+    // ---------- passo 1: arquivos + validação (história 02) ----------
+    const EXEMPLO_OK = [
+      { nome: 'cena_principal.blend', tam: '1,8 GB', tipo: 'cena' }, { nome: 'tex/neve_albedo.png', tam: '64 MB', tipo: 'textura' },
+      { nome: 'tex/neve_normal.png', tam: '64 MB', tipo: 'textura' }, { nome: 'hdri/estudio_4k.hdr', tam: '92 MB', tipo: 'textura' } ];
+    const EXEMPLO_ERRO = [
+      { nome: 'cena_principal.blend', tam: '1,8 GB', tipo: 'cena' }, { nome: 'tex/neve_albedo.png', tam: '64 MB', tipo: 'textura' },
+      { nome: 'fonte_titulo.otf', tam: '0 KB', tipo: 'invalido' } ];
+    const FALTANDO_ERRO = ['tex/neve_normal.png', 'hdri/estudio_4k.hdr'];
+
+    function validar(faltando) {
+      const invalidos = arquivos.filter((a) => a.tipo === 'invalido');
+      const temCena = arquivos.some((a) => a.tipo === 'cena');
+      const box = $('validacao');
+      const problemas = [];
+      if (!temCena) problemas.push('Nenhum arquivo de cena/projeto encontrado no pacote.');
+      faltando.forEach((f) => problemas.push(`Arquivo referenciado pela cena e ausente: <code>${f}</code>`));
+      invalidos.forEach((a) => problemas.push(`Arquivo inválido ou corrompido: <code>${ui.esc(a.nome)}</code>`));
+      if (!arquivos.length) { box.innerHTML = ''; $('p1-ok').disabled = true; return; }
+      if (problemas.length) {
+        box.innerHTML = `<div class="aviso aviso-erro"><b>O job não pode entrar na fila ainda.</b><ul style="margin:6px 0 0;padding-left:18px">${problemas.map((p) => `<li>${p}</li>`).join('')}</ul></div>`;
+        $('p1-ok').disabled = true;
+      } else {
+        box.innerHTML = `<div class="aviso aviso-ok"><b>Pacote verificado.</b> Projeto identificado: ${ui.esc(arquivos.find((a) => a.tipo === 'cena').nome)} · ${arquivos.length} arquivos, nenhuma referência ausente.</div>`;
+        $('p1-ok').disabled = false;
+      }
+    }
+    function mostrarArquivos(faltando = []) {
+      $('lista-arq').innerHTML = arquivos.map((a, i) => `<li><span class="nome">${ui.esc(a.nome)}</span><small>${a.tam}</small>
+        ${a.tipo === 'invalido' ? ui.badge('Erro') : `<span class="badge badge-verde">ok</span>`}
+        <button class="btn-icone" data-rm="${i}" aria-label="Remover ${ui.esc(a.nome)}">${ui.icone('fechar')}</button></li>`).join('');
+      $('lista-arq').querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { arquivos.splice(+b.dataset.rm, 1); mostrarArquivos(faltando); });
+      validar(faltando);
+    }
+    $('ex-ok').onclick = () => { arquivos = EXEMPLO_OK.map((a) => ({ ...a })); mostrarArquivos(); };
+    $('ex-erro').onclick = () => { arquivos = EXEMPLO_ERRO.map((a) => ({ ...a })); mostrarArquivos(FALTANDO_ERRO); };
+
+    const zona = $('zona'); const input = $('input-arq');
+    zona.onclick = () => input.click();
+    zona.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+    const ext = /\.(blend|c4d|uproject|mb|ma|prproj|zip)$/i;
+    function adicionar(files) {
+      [...files].forEach((f) => arquivos.push({ nome: f.name, tam: (f.size / 1048576).toFixed(1).replace('.', ',') + ' MB', tipo: f.size === 0 ? 'invalido' : ext.test(f.name) ? 'cena' : 'textura' }));
+      mostrarArquivos();
+    }
+    input.onchange = () => adicionar(input.files);
+    zona.ondragover = (e) => { e.preventDefault(); zona.classList.add('sobre'); };
+    zona.ondragleave = () => zona.classList.remove('sobre');
+    zona.ondrop = (e) => { e.preventDefault(); zona.classList.remove('sobre'); adicionar(e.dataTransfer.files); };
+
+    // ---------- navegação entre passos ----------
+    function ir(n) {
+      if (n === 3 && passoAtual === 2) {
+        const ok = +$('frame-fim').value > +$('frame-ini').value;
+        $('erro-frames').hidden = ok; if (!ok) return;
+      }
+      passoAtual = n;
+      document.querySelectorAll('.passo').forEach((s) => s.hidden = +s.dataset.passo !== n);
+      document.querySelectorAll('.passos li').forEach((li) => { const p = +li.dataset.p; li.className = p < n ? 'feito' : p === n ? 'atual' : ''; });
+      if (n === 3) atualizarEstimativa();
+      if (n === 4) montarRevisao();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    document.querySelectorAll('[data-ir]').forEach((b) => b.onclick = () => ir(+b.dataset.ir));
+    ir(1);
+
+    // ---------- passo 3: destino (história 04) ----------
+    const livresLocal = db.estacoes.filter((e) => e.tipo === 'local' && e.status === 'online').flatMap((e) => e.gpus).filter((g) => g.uso < 20).length;
+    const livresNuvem = db.nuvem.gpusTotais - db.nuvem.gpusEmUso;
+    $('cap-local').textContent = `${livresLocal} GPUs livres agora`;
+    $('cap-nuvem').textContent = `${livresNuvem} GPUs livres agora`;
+    const destino = () => document.querySelector('input[name=destino]:checked').value;
+    document.querySelectorAll('input[name=destino]').forEach((r) => r.onchange = atualizarEstimativa);
+
+    function atualizarEstimativa() {
+      document.querySelectorAll('.opcao').forEach((o) => o.classList.toggle('marcada', o.querySelector('input').checked));
+      const frames = Math.max(1, +$('frame-fim').value - +$('frame-ini').value + 1);
+      const res4k = $('resolucao').value.startsWith('3840');
+      const segFrameGpu = (res4k ? 95 : 32) * ($('amostras').value.startsWith('Preview') ? .3 : $('amostras').value.includes('denoise') ? 1.2 : 1);
+      const horasGPU = frames * segFrameGpu / 3600;
+      const d = destino();
+      const gpus = d === 'Local' ? Math.max(livresLocal, 0) : d === 'Nuvem' ? Math.min(16, livresNuvem) : Math.max(livresLocal, 0) + Math.min(8, livresNuvem);
+      const custoNuvem = d === 'Local' ? 0 : d === 'Nuvem' ? horasGPU * db.tarifas.nuvemHoraGPU : horasGPU * .5 * db.tarifas.nuvemHoraGPU;
+      const box = $('estimativa');
+      if (gpus === 0) {
+        box.className = 'aviso aviso-atencao';
+        box.innerHTML = `<b>Sem GPUs livres no destino escolhido agora.</b> O job entra na fila e começa assim que houver recurso (ele <u>não</u> será movido para outro destino sem sua autorização).`;
+      } else {
+        const min = Math.ceil(horasGPU * 60 / gpus);
+        box.className = 'aviso aviso-info';
+        box.innerHTML = `<b>Estimativa:</b> ${frames} frames · ~${ui.num(horasGPU)} h de GPU · com ${gpus} GPUs ≈ <b>${min >= 60 ? Math.floor(min / 60) + ' h ' + (min % 60) + ' min' : min + ' min'}</b>` +
+          (custoNuvem ? ` · custo de nuvem estimado <b>${ui.brl(custoNuvem)}</b> (tarifa ${ui.brl(db.tarifas.nuvemHoraGPU)}/h GPU)` : ' · sem custo de nuvem');
+      }
+      return { horasGPU, gpus };
+    }
+
+    function dadosJob() {
+      const proj = RT.projeto($('projeto').value);
+      return {
+        projeto: proj.id, arquivo: arquivos.find((a) => a.tipo === 'cena')?.nome || '—', software: $('software').value,
+        destino: destino(), prioridade: $('prioridade').value, frames: `${$('frame-ini').value}–${$('frame-fim').value}`,
+        resolucao: $('resolucao').value, formato: $('formato').value, qualidade: $('amostras').value, prazo: $('prazo').value
+      };
+    }
+    function montarRevisao() {
+      const j = dadosJob(); const est = atualizarEstimativa();
+      $('revisao').innerHTML = [
+        ['Projeto', ui.esc(RT.projeto(j.projeto).nome)], ['Arquivo principal', `<code>${ui.esc(j.arquivo)}</code> + ${arquivos.length - 1} arquivos`],
+        ['Software', j.software], ['Frames', `${j.frames} @ ${$('fps').value} fps`], ['Resolução / formato', `${j.resolucao} · ${j.formato}`],
+        ['Qualidade', j.qualidade], ['Destino', j.destino], ['Prioridade', ui.badge(j.prioridade)], ['Prazo', j.prazo ? j.prazo.split('-').reverse().join('/') : '—'],
+        ['Estimativa', $('estimativa').textContent.replace('Estimativa: ', '')]
+      ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    }
+
+    $('enviar').onclick = () => {
+      const j = dadosJob(); const est = atualizarEstimativa();
+      const id = RT.proximoId('JOB-', db.jobs);
+      db.jobs.unshift({ id, ...j, status: 'Na fila', progresso: 0, estacao: '—', gpus: 0, dono: db.sessao.nome, criado: ui.agora(),
+        eta: est.gpus ? 'aguardando início' : 'aguardando GPU', horasGPU: 0 });
+      const proj = RT.projeto(j.projeto);
+      if (!proj.versoes.some((v) => v.arquivo === j.arquivo)) proj.versoes.push({ v: 'v' + (proj.versoes.length + 1), data: ui.agora().slice(0, 10), arquivo: j.arquivo, nota: 'Enviado com o ' + id });
+      RT.salvar();
+      RT.ui.modal({ titulo: 'Job adicionado à fila', corpo: `<p><b>${id}</b> entrou na fila com prioridade <b>${j.prioridade}</b> no destino <b>${j.destino}</b>.</p><p class="suave">Você recebe um alerta quando ele terminar ou se der erro.</p>`,
+        acoes: [{ texto: 'Enviar outro', classe: 'btn', onClick: () => location.reload() }, { texto: 'Acompanhar job', classe: 'btn btn-primario', onClick: () => location.href = 'job.html?id=' + id }] });
+    };
+  }
+  </script>
+</body>
+</html>

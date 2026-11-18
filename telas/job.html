@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Detalhe do job · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 2 · Detalhe do job (histórias 05 e 06) */
+    .progresso-grande { display: flex; align-items: center; gap: 16px; }
+    .progresso-grande .barra { flex: 1; height: 14px; border-radius: 8px; }
+    .progresso-grande strong { font-size: 28px; color: var(--titulo); font-variant-numeric: tabular-nums; min-width: 80px; text-align: right; }
+    @keyframes pisca { 50% { opacity: .4; } }
+    dl.ficha { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; margin: 0; }
+    dl.ficha dt { color: var(--texto-2); } dl.ficha dd { margin: 0; font-weight: 600; word-break: break-word; }
+    .log { background: var(--log); border: 1px solid var(--borda); color: #b9d0e4; font-family: var(--mono); font-size: 12px; border-radius: 8px; padding: 12px 14px; height: 260px; overflow-y: auto; white-space: pre-wrap; }
+    .log .e { color: #ff9b9b; } .log .w { color: #f3c776; } .log .t { color: #6f8aa3; }
+    .saida { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--borda); }
+    .saida:last-child { border-bottom: 0; }
+    .saida .info { flex: 1; }
+  </style>
+</head>
+<body data-tela="job" data-titulo="Detalhe do job">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><a href="fila.html">← Voltar para a fila</a><h2 id="titulo" style="margin-top:6px">Job</h2><p id="subtitulo"></p></div>
+      <div class="linha" id="botoes"></div>
+    </div>
+
+    <div id="erro-job"></div>
+
+    <section class="cartao">
+      <div class="progresso-grande"><div id="barra" style="flex:1"></div><strong id="pct">0%</strong></div>
+      <div class="linha entre" style="margin-top:8px"><small id="frames-txt"></small><small id="eta"></small></div>
+      
+    </section>
+
+    <section class="grade g-2-1">
+      <div class="cartao">
+        <header><h3>Log da renderização</h3><button class="btn btn-peq" id="baixar-log">Baixar log</button></header>
+        <div class="log" id="log" tabindex="0" aria-label="Log"></div>
+      </div>
+      <div class="cartao">
+        <header><h3>Ficha do job</h3></header>
+        <dl class="ficha" id="ficha"></dl>
+      </div>
+    </section>
+
+    <section class="cartao" id="saidas">
+      <header><h3>Arquivos finalizados</h3><a id="link-projeto" href="projetos.html">Ver no projeto →</a></header>
+      <div id="lista-saidas"></div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    const id = new URLSearchParams(location.search).get('id') || db.jobs[0].id;
+    const j = RT.job(id);
+    if (!j) {
+      document.getElementById('conteudo').innerHTML = `<div class="vazio"><h2>Job não encontrado</h2><a class="btn" href="fila.html">Voltar para a fila</a></div>`;
+    } else {
+      const proj = RT.projeto(j.projeto);
+      const podeControlar = j.dono === db.sessao.nome || ['Administrador', 'Operador'].includes(db.sessao.perfil);
+      const totalFrames = (() => { const m = j.frames.match(/(\d+)\D+(\d+)/); return m ? +m[2] - +m[1] + 1 : 240; })();
+
+      const linhasLog = [
+        ['t', '08:12:03', 'Pacote recebido e verificado (todas as referências encontradas)'],
+        ['t', '08:12:05', `Destino: ${j.destino} · estações ${j.estacao}`],
+        ['t', '08:12:09', `Carregando cena ${j.arquivo} no ${j.software}`],
+        ['t', '08:13:40', 'Compilando shaders e BVH'],
+        ['w', '08:14:02', 'Aviso: GPU 1 acima de 95% de uso, limitando clock por temperatura'],
+        ['t', '08:14:10', 'Frame 1 concluído em 31,4 s']
+      ];
+
+      function render() {
+        document.title = `${j.id} · recTech`;
+        $('titulo').innerHTML = `${j.id} ${ui.badge(j.status)} ${ui.badge(j.prioridade)}`;
+        $('subtitulo').innerHTML = `<span class="mono">${ui.esc(j.arquivo)}</span> · ${ui.esc(proj?.nome || '')} · enviado por ${ui.esc(j.dono)} em ${j.criado}`;
+        $('barra').innerHTML = ui.tira(j.progresso, j.status, 60, 'Frames de ' + j.id, true);
+        $('pct').textContent = j.progresso + '%';
+        const feitos = Math.round(totalFrames * j.progresso / 100);
+        $('frames-txt').textContent = `${feitos} de ${totalFrames} frames`;
+        $('eta').textContent = j.status === 'Renderizando' ? `Tempo restante estimado: ${j.eta}` : j.status;
+
+        $('erro-job').innerHTML = j.status === 'Erro' ? `<div class="aviso aviso-erro"><b>Falha na renderização:</b> ${ui.esc(j.erro || 'erro desconhecido')}. Corrija o arquivo e reenvie; os frames já prontos são reaproveitados.</div>` : '';
+
+        const b = [];
+        if (podeControlar && j.status === 'Renderizando') b.push('<button class="btn" data-a="pausar">Pausar</button>');
+        if (podeControlar && j.status === 'Pausado') b.push('<button class="btn btn-primario" data-a="retomar">Retomar</button>');
+        if (podeControlar && j.status === 'Erro') b.push('<button class="btn btn-primario" data-a="reenviar">Reenviar</button>');
+        if (podeControlar && ['Renderizando', 'Na fila', 'Pausado'].includes(j.status)) b.push('<button class="btn btn-perigo" data-a="cancelar">Cancelar</button>');
+        if (j.status === 'Concluído') b.push('<a class="btn btn-primario" href="#saidas">Baixar arquivos</a>');
+        $('botoes').innerHTML = b.join('');
+
+        $('ficha').innerHTML = [
+          ['Projeto', ui.esc(proj?.nome || '—')], ['Cliente', ui.esc(proj?.cliente || '—')], ['Software', j.software], ['Frames', j.frames],
+          ['Resolução', j.resolucao], ['Formato', j.formato], ['Destino', j.destino], ['Estação', j.estacao], ['GPUs alocadas', j.gpus || '—'],
+          ['Horas de GPU', ui.num(j.horasGPU || 0) + ' h'], ['Custo de nuvem', j.destino === 'Local' ? 'R$ 0,00' : ui.brl((j.horasGPU || 0) * db.tarifas.nuvemHoraGPU * (j.destino === 'Híbrido' ? .5 : 1))]
+        ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+        const log = linhasLog.slice();
+        if (j.status === 'Erro') log.push(['e', '18:47:12', `ERRO: ${j.erro}`], ['e', '18:47:12', 'Renderização interrompida. Frames 1–1166 preservados.']);
+        else for (let f = 2; f <= Math.min(feitos, 40); f += 6) log.push(['t', `08:${String(14 + f).padStart(2, '0')}:${String((f * 7) % 60).padStart(2, '0')}`, `Frame ${f} concluído em ${(30 + (f % 5)).toFixed(1).replace('.', ',')} s`]);
+        if (j.status === 'Pausado') log.push(['w', '—', 'Job pausado pelo usuário. GPUs liberadas.']);
+        if (j.status === 'Concluído') log.push(['t', '—', 'Encode final e upload para o armazenamento concluídos.']);
+        if (j.status === 'Na fila') log.length = 1, log.push(['t', '—', 'Aguardando GPU livre no destino escolhido.']);
+        const el = $('log');
+        el.innerHTML = log.map(([c, h, t]) => `<span class="${c}">[${h}]</span> ${ui.esc(t)}`).join('\n');
+        el.scrollTop = el.scrollHeight;
+
+        const saidas = (proj?.saidas || []).filter((s) => s.job === j.id);
+        $('link-projeto').href = 'projetos.html?id=' + j.projeto;
+        $('lista-saidas').innerHTML = j.status !== 'Concluído'
+          ? `<p class="suave">Os arquivos aparecem aqui quando o job terminar.</p>`
+          : saidas.map((s) => `<div class="saida"><div class="info"><b class="mono">${ui.esc(s.arquivo)}</b><br><small>${s.tamanho} · gerado em ${s.data} · vinculado a ${j.id} e ao projeto ${ui.esc(proj.nome)}</small></div>
+              <button class="btn btn-primario btn-peq" data-baixar="${ui.esc(s.arquivo)}">Baixar</button></div>`).join('') || '<p class="suave">Sem arquivos registrados.</p>';
+      }
+
+      document.addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.baixar) return ui.baixar(b.dataset.baixar, `${j.id} · ${proj.nome}`);
+        const a = b.dataset.a; if (!a) return;
+        if (a === 'pausar') { j.status = 'Pausado'; j.eta = 'pausado'; j.gpus = 0; ui.toast('Job pausado.', 'aviso'); }
+        if (a === 'retomar') { j.status = 'Na fila'; j.eta = 'aguardando GPU'; ui.toast('Job de volta à fila.'); }
+        if (a === 'reenviar') { j.status = 'Na fila'; j.eta = 'aguardando GPU'; delete j.erro; ui.toast('Job reenviado.'); }
+        if (a === 'cancelar') return ui.confirmar('Cancelar job', `Cancelar <b>${j.id}</b>? Os frames prontos ficam salvos.`, 'Cancelar job', () => { j.status = 'Cancelado'; j.eta = '—'; j.gpus = 0; RT.salvar(); render(); });
+        RT.salvar(); render();
+      });
+      $('baixar-log').onclick = () => ui.baixar(`${j.id}_log`, $('log').innerText);
+      render();
+
+      setInterval(() => {
+        if (j.status !== 'Renderizando') return;
+        j.progresso = Math.min(100, j.progresso + 1);
+        if (j.progresso === 100) { RT.concluirJob(j); ui.toast(`${j.id} concluído!`); }
+        RT.salvar(); render();
+      }, 3000);
+    }
+  }
+  </script>
+</body>
+</html>

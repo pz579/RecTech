@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fila de jobs · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 2 · Fila de jobs (histórias 03 e 05) */
+    .ordem { display: flex; flex-direction: column; gap: 2px; }
+    .ordem { flex-direction: row; gap: 4px; }
+    .ordem button { background: var(--cartao); border: 1px solid var(--borda); border-radius: 6px; cursor: pointer; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; color: var(--texto-2); }
+    .ordem .ic { width: 16px; height: 16px; }
+    .ordem button:hover:not(:disabled) { background: var(--hover); color: var(--texto); }
+    .ordem button:disabled { opacity: .3; cursor: default; }
+    td select { width: auto; padding: 4px 8px; font-size: 12.5px; }
+    .pos { font-weight: 700; color: var(--texto-2); font-variant-numeric: tabular-nums; }
+    .prog { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+    .prog .tira { flex: 1; }
+    .pos .ic { width: 14px; height: 14px; color: var(--azul); vertical-align: -2px; }
+  </style>
+</head>
+<body data-tela="fila" data-titulo="Fila de jobs">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Ordem de execução</h2>
+        <p>Jobs pendentes rodam de cima para baixo. Mude a prioridade ou use as setas para reordenar dentro da mesma prioridade.</p></div>
+      <a class="btn btn-primario" href="novo-job.html">+ Novo job</a>
+    </div>
+    <dl class="fatos" id="fatos"></dl>
+
+
+    <section class="cartao sem-padding">
+      <header>
+        <div class="abas" id="abas" style="margin:0;border:0">
+          <button data-aba="ativos" class="ativa">Ativos e na fila</button><button data-aba="concluidos">Concluídos</button><button data-aba="problemas">Erros e cancelados</button>
+        </div>
+        <div class="filtros">
+          <input type="search" id="busca" placeholder="Buscar job, arquivo ou projeto" aria-label="Buscar">
+          <select id="f-destino" aria-label="Filtrar por destino"><option value="">Todos os destinos</option><option>Local</option><option>Nuvem</option><option>Híbrido</option></select>
+          <label class="linha" style="font-weight:400;margin:0"><input type="checkbox" id="f-meus"> Só meus jobs</label>
+        </div>
+      </header>
+      <div class="tabela-wrap" style="margin-top:12px">
+        <table>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    const PRIO = ['Urgente', 'Alta', 'Normal', 'Baixa'];
+    const podeReordenar = ['Administrador', 'Operador'].includes(db.sessao.perfil);
+    let aba = 'ativos';
+
+    // Ordem de execução = prioridade, depois posição manual (campo "ordem"), depois chegada
+    db.jobs.forEach((j, i) => { if (j.ordem == null) j.ordem = i; });
+    const pendente = (j) => ['Renderizando', 'Na fila', 'Pausado'].includes(j.status);
+    const ordenar = (a, b) => (a.status === 'Renderizando' ? 0 : 1) - (b.status === 'Renderizando' ? 0 : 1) || PRIO.indexOf(a.prioridade) - PRIO.indexOf(b.prioridade) || a.ordem - b.ordem;
+
+    const ROT_ABAS = { ativos: 'Ativos e na fila', concluidos: 'Concluídos', problemas: 'Erros e cancelados' };
+    function kpis() {
+      const c = (s) => db.jobs.filter((j) => j.status === s).length;
+      const n = { ativos: db.jobs.filter(pendente).length, concluidos: c('Concluído'), problemas: c('Erro') + c('Cancelado') };
+      document.querySelectorAll('#abas button').forEach((b) => { b.innerHTML = `${ROT_ABAS[b.dataset.aba]} <span class="conta">${n[b.dataset.aba]}</span>`; });
+      $('fatos').innerHTML = `<div><dt>Renderizando</dt><dd>${c('Renderizando')}</dd></div><div><dt>Na fila</dt><dd>${c('Na fila')}</dd></div>
+        <div><dt>Pausados</dt><dd>${c('Pausado')}</dd></div><div class="${c('Erro') ? 'ruim' : ''}"><dt>Com erro</dt><dd>${c('Erro')}</dd></div>`;
+    }
+
+    function acoes(j) {
+      const meu = j.dono === db.sessao.nome || podeReordenar;
+      const b = [];
+      if (meu && j.status === 'Renderizando') b.push(`<button class="btn btn-peq" data-acao="pausar" data-id="${j.id}">Pausar</button>`);
+      if (meu && j.status === 'Pausado') b.push(`<button class="btn btn-peq" data-acao="retomar" data-id="${j.id}">Retomar</button>`);
+      if (meu && j.status === 'Erro') b.push(`<button class="btn btn-peq" data-acao="reenviar" data-id="${j.id}">Reenviar</button>`);
+      if (meu && pendente(j)) b.push(`<button class="btn btn-peq" data-acao="cancelar" data-id="${j.id}">Cancelar</button>`);
+      if (j.status === 'Concluído') b.push(`<a class="btn btn-peq" href="job.html?id=${j.id}#saidas">Baixar</a>`);
+      b.push(`<a class="btn btn-peq" href="job.html?id=${j.id}">Detalhes</a>`);
+      return `<div class="acoes">${b.join('')}</div>`;
+    }
+
+    function render() {
+      kpis();
+      const busca = $('busca').value.trim().toLowerCase();
+      let lista = db.jobs.filter((j) => aba === 'ativos' ? pendente(j) : aba === 'concluidos' ? j.status === 'Concluído' : ['Erro', 'Cancelado'].includes(j.status));
+      if ($('f-destino').value) lista = lista.filter((j) => j.destino === $('f-destino').value);
+      if ($('f-meus').checked) lista = lista.filter((j) => j.dono === db.sessao.nome);
+      if (busca) lista = lista.filter((j) => [j.id, j.arquivo, RT.projeto(j.projeto)?.nome, j.dono].join(' ').toLowerCase().includes(busca));
+      lista.sort(aba === 'ativos' ? ordenar : (a, b) => b.criado.localeCompare(a.criado));
+
+      const ativos = aba === 'ativos';
+      $('thead').innerHTML = `<tr>${ativos ? '<th>#</th>' : ''}<th>Job</th><th>Projeto</th><th>Destino</th><th>Prioridade</th><th>Status</th><th>Progresso</th><th>${ativos ? 'ETA' : 'Criado'}</th><th>Responsável</th><th class="num">Ações</th></tr>`;
+      if (!lista.length) { $('tbody').innerHTML = `<tr><td colspan="10" class="vazio">Nenhum job aqui.</td></tr>`; return; }
+
+      // posição de execução só conta jobs que ainda não começaram
+      const espera = lista.filter((j) => j.status !== 'Renderizando');
+      $('tbody').innerHTML = lista.map((j) => {
+        const mesmaPrio = espera.filter((x) => x.prioridade === j.prioridade);
+        const iMesma = mesmaPrio.indexOf(j);
+        const posicao = j.status === 'Renderizando' ? `<span title="Renderizando agora">${ui.icone('play')}</span>` : espera.indexOf(j) + 1;
+        const ordem = ativos && podeReordenar && j.status !== 'Renderizando'
+          ? `<div class="linha" style="gap:6px;flex-wrap:nowrap"><span class="pos">${posicao}</span><div class="ordem">
+              <button data-mover="-1" data-id="${j.id}" ${iMesma <= 0 ? 'disabled' : ''} aria-label="Subir ${j.id}">${ui.icone('cima')}</button>
+              <button data-mover="1" data-id="${j.id}" ${iMesma === mesmaPrio.length - 1 ? 'disabled' : ''} aria-label="Descer ${j.id}">${ui.icone('baixo')}</button></div></div>`
+          : `<span class="pos">${posicao}</span>`;
+        const prio = ativos && podeReordenar
+          ? `<select data-prio="${j.id}" aria-label="Prioridade de ${j.id}">${PRIO.map((p) => `<option ${p === j.prioridade ? 'selected' : ''}>${p}</option>`).join('')}</select>`
+          : ui.badge(j.prioridade);
+        return `<tr>
+          ${ativos ? `<td>${ordem}</td>` : ''}
+          <td><a href="job.html?id=${j.id}"><b>${j.id}</b></a><br><small class="mono">${ui.esc(j.arquivo)}</small></td>
+          <td>${ui.esc(RT.projeto(j.projeto)?.nome || '—')}<br><small>${j.software}</small></td>
+          <td>${j.destino}</td><td>${prio}</td><td>${ui.badge(j.status)}</td>
+          <td><div class="prog">${ui.tira(j.progresso, j.status, 20, 'Frames de ' + j.id)}<small>${j.progresso}%</small></div></td>
+          <td>${ativos ? j.eta : j.criado.slice(0, 16)}</td><td>${ui.esc(j.dono)}</td><td>${acoes(j)}</td></tr>`;
+      }).join('');
+    }
+
+    $('tbody').addEventListener('change', (e) => {
+      const id = e.target.dataset.prio; if (!id) return;
+      const j = RT.job(id); j.prioridade = e.target.value; j.ordem = Date.now(); RT.salvar(); render();
+      ui.toast(`${id} agora tem prioridade ${j.prioridade}. Ordem de execução atualizada.`);
+    });
+    $('tbody').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      const j = RT.job(b.dataset.id);
+      if (b.dataset.mover) {
+        const viz = db.jobs.filter((x) => pendente(x) && x.status !== 'Renderizando' && x.prioridade === j.prioridade).sort(ordenar);
+        const i = viz.indexOf(j); const outro = viz[i + +b.dataset.mover];
+        if (outro) { [j.ordem, outro.ordem] = [outro.ordem, j.ordem]; RT.salvar(); render(); }
+        return;
+      }
+      const a = b.dataset.acao;
+      if (a === 'pausar') { j.status = 'Pausado'; j.eta = 'pausado'; j.gpus = 0; ui.toast(`${j.id} pausado. As GPUs foram liberadas para o próximo da fila.`, 'aviso'); }
+      if (a === 'retomar') { j.status = 'Na fila'; j.eta = 'aguardando GPU'; ui.toast(`${j.id} voltou para a fila e continua do frame onde parou.`); }
+      if (a === 'reenviar') { j.status = 'Na fila'; j.eta = 'aguardando GPU'; delete j.erro; ui.toast(`${j.id} reenviado para a fila.`); }
+      if (a === 'cancelar') {
+        return ui.confirmar('Cancelar job', `Cancelar <b>${j.id}</b>? Os frames já renderizados ficam salvos, mas o job sai da fila.`, 'Cancelar job', () => {
+          j.status = 'Cancelado'; j.eta = '—'; j.gpus = 0; RT.salvar(); render(); ui.toast(`${j.id} cancelado.`, 'aviso');
+        });
+      }
+      RT.salvar(); render();
+    });
+    $('abas').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      aba = b.dataset.aba; document.querySelectorAll('#abas button').forEach((x) => x.classList.toggle('ativa', x === b)); render();
+    });
+    ['busca', 'f-destino', 'f-meus'].forEach((id) => $(id).addEventListener('input', render));
+    render();
+
+    // Simula o progresso dos jobs renderizando
+    setInterval(() => {
+      let mudou = false;
+      db.jobs.filter((j) => j.status === 'Renderizando').forEach((j) => {
+        j.progresso = Math.min(100, j.progresso + 1); mudou = true;
+        if (j.progresso === 100) { RT.concluirJob(j); ui.toast(`${j.id} concluído! Arquivos disponíveis para download.`); }
+      });
+      if (mudou) { RT.salvar(); if (!document.querySelector('td select:focus')) render(); }
+    }, 4000);
+  }
+  </script>
+</body>
+</html>
