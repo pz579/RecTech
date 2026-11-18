@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projetos e entregas · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 3 · Projetos e entregas (história 06 + requisito "gerenciamento de vídeos") */
+    .layout-proj { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .lista-proj { padding: 8px; }
+    .lista-proj button { color: var(--texto); width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 10px 12px; font: inherit; cursor: pointer; display: block; }
+    .lista-proj button:hover { background: var(--hover); }
+    .lista-proj button.ativo { background: var(--laranja-suave); outline: 1.5px solid var(--b-laranja-t); outline-offset: -1.5px; }
+    .lista-proj b { display: block; color: var(--titulo); }
+    .linha-tempo { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--borda); }
+    .linha-tempo li { position: relative; padding: 0 0 14px 10px; }
+    .linha-tempo li::before { content: ''; position: absolute; left: -25px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--cartao); border: 2px solid var(--turquesa); }
+    .linha-tempo li.atual::before { background: var(--laranja); border-color: var(--laranja); }
+    @media (max-width: 900px) { .layout-proj { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-tela="projetos" data-titulo="Projetos e entregas">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Projetos</h2><p>Entradas, versões, saídas renderizadas e histórico de cada projeto do estúdio.</p></div>
+      <div class="filtros"><input type="search" id="busca" placeholder="Buscar projeto ou cliente" aria-label="Buscar projeto"><button class="btn btn-escuro" id="novo">+ Novo projeto</button></div>
+    </div>
+
+    <div class="layout-proj">
+      <nav class="cartao lista-proj" id="lista" aria-label="Projetos"></nav>
+      <section id="detalhe" class="grade" style="gap:16px"></section>
+    </div>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    let atual = new URLSearchParams(location.search).get('id') || db.projetos[0].id;
+    const podeEnviar = RT.podeVer('novo-job', db.sessao.perfil);
+
+    function lista() {
+      const q = $('busca').value.trim().toLowerCase();
+      const ps = db.projetos.filter((p) => (p.nome + ' ' + p.cliente).toLowerCase().includes(q));
+      $('lista').innerHTML = ps.map((p) => {
+        const ativos = db.jobs.filter((j) => j.projeto === p.id && ['Renderizando', 'Na fila', 'Pausado'].includes(j.status)).length;
+        return `<button class="${p.id === atual ? 'ativo' : ''}" data-id="${p.id}"><b>${ui.esc(p.nome)}</b>
+          <small>${ui.esc(p.cliente)} · ${p.software}${ativos ? ` · <span style="color:var(--azul)">${ativos} em andamento</span>` : ''}</small></button>`;
+      }).join('') || '<p class="suave" style="padding:10px">Nada encontrado.</p>';
+    }
+
+    function detalhe() {
+      const p = RT.projeto(atual); if (!p) return;
+      const jobs = db.jobs.filter((j) => j.projeto === p.id).sort((a, b) => b.criado.localeCompare(a.criado));
+      const horas = jobs.reduce((s, j) => s + (j.horasGPU || 0), 0);
+      $('detalhe').innerHTML = `
+        <div class="cartao"><div class="linha entre">
+          <div><h2>${ui.esc(p.nome)}</h2><small>${p.id} · ${ui.esc(p.cliente)} · ${p.software} · criado em ${p.criado.split('-').reverse().join('/')}</small></div>
+          ${podeEnviar ? `<a class="btn btn-primario" href="novo-job.html?projeto=${p.id}">Renderizar nova versão</a>` : ''}</div>
+          <dl class="fatos" style="margin-top:14px">
+            <div><dt>Versões</dt><dd>${p.versoes.length}</dd></div>
+            <div><dt>Arquivos entregues</dt><dd>${p.saidas.length}</dd></div>
+            <div><dt>Horas de GPU</dt><dd>${ui.num(horas)} h</dd></div></dl></div>
+
+        <div class="cartao sem-padding"><header><h3>Saídas renderizadas</h3>
+          ${p.saidas.length > 1 ? '<button class="btn btn-peq" id="baixar-tudo">Baixar todas</button>' : ''}</header>
+          <div class="tabela-wrap" style="margin-top:10px"><table><thead><tr><th>Arquivo</th><th>Job de origem</th><th>Data</th><th class="num">Tamanho</th><th class="num"></th></tr></thead><tbody>
+          ${p.saidas.map((s) => `<tr><td class="mono">${ui.esc(s.arquivo)}</td><td><a href="job.html?id=${s.job}">${s.job}</a></td><td>${s.data.split('-').reverse().join('/')}</td>
+            <td class="num">${s.tamanho}</td><td><div class="acoes"><button class="btn btn-primario btn-peq" data-baixar="${ui.esc(s.arquivo)}">Baixar</button></div></td></tr>`).join('')
+            || '<tr><td colspan="5" class="suave">Nenhuma saída ainda. Elas aparecem aqui quando um job do projeto termina.</td></tr>'}
+          </tbody></table></div></div>
+
+        <div class="grade g2">
+          <div class="cartao"><header><h3>Versões de entrada</h3></header>
+            <ul class="linha-tempo">${p.versoes.slice().reverse().map((v, i) => `<li class="${i === 0 ? 'atual' : ''}"><b>${v.v}</b> · <span class="mono">${ui.esc(v.arquivo)}</span><br><small>${v.data.split('-').reverse().join('/')} · ${ui.esc(v.nota)}</small></li>`).join('')}</ul></div>
+          <div class="cartao"><header><h3>Histórico de renderizações</h3></header>
+            <ul class="linha-tempo">${jobs.map((j) => `<li><a href="job.html?id=${j.id}"><b>${j.id}</b></a> ${ui.badge(j.status)}<br><small>${j.criado} · ${j.destino} · ${j.resolucao} · ${ui.esc(j.dono)}</small></li>`).join('') || '<li class="suave">Sem renderizações.</li>'}</ul></div>
+        </div>`;
+      const bt = $('baixar-tudo');
+      if (bt) bt.onclick = () => ui.baixar(`${p.id}_entregas.zip`, p.saidas.map((s) => s.arquivo).join('\n'));
+    }
+
+    $('lista').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; atual = b.dataset.id; history.replaceState(null, '', '?id=' + atual); lista(); detalhe(); };
+    $('detalhe').onclick = (e) => { const b = e.target.closest('[data-baixar]'); if (b) ui.baixar(b.dataset.baixar, RT.projeto(atual).nome); };
+    $('busca').oninput = lista;
+    $('novo').onclick = () => ui.modal({ titulo: 'Novo projeto', corpo: `
+        <div class="campo"><label for="np-nome">Nome do projeto</label><input type="text" id="np-nome" placeholder="Ex.: Campanha de verão"></div>
+        <div class="campo"><label for="np-cliente">Cliente</label><input type="text" id="np-cliente"></div>
+        <div class="campo"><label for="np-sw">Software principal</label><select id="np-sw"><option>Blender</option><option>Cinema 4D</option><option>Unreal Engine</option><option>Maya</option><option>Premiere Pro</option></select></div>
+        <div id="np-erro" class="erro-campo"></div>`,
+      acoes: [{ texto: 'Cancelar' }, { texto: 'Criar projeto', classe: 'btn btn-primario', onClick: (fechar) => {
+        const nome = $('np-nome').value.trim(), cliente = $('np-cliente').value.trim();
+        if (!nome || !cliente) { $('np-erro').textContent = 'Preencha nome e cliente.'; return; }
+        const id = RT.proximoId('PRJ-', db.projetos);
+        db.projetos.unshift({ id, nome, cliente, software: $('np-sw').value, criado: ui.agora().slice(0, 10), versoes: [], saidas: [] });
+        RT.salvar(); atual = id; fechar(); lista(); detalhe(); ui.toast('Projeto criado.');
+      } }] });
+
+    lista(); detalhe();
+  }
+  </script>
+</body>
+</html>

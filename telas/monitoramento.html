@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitoramento · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 3 · Monitoramento das estações (história 07) */
+    .estacao.alerta { border-color: var(--a-erro-b); box-shadow: 0 0 0 3px rgba(214,84,84,.14); }
+    .gpus { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin: 12px 0; }
+    .gpu { border: 1px solid var(--borda); border-radius: 8px; padding: 8px 10px; background: var(--superficie-2); }
+    .gpu.passou { border-color: var(--a-erro-b); background: var(--a-erro); }
+    .gpu .linha { justify-content: space-between; font-size: 12px; }
+    .gpu b { font-variant-numeric: tabular-nums; }
+    .gpu .t-alta { color: var(--vermelho); }
+    .recursos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .recursos .linha { justify-content: space-between; font-size: 12.5px; }
+    .ao-vivo { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--verde); font-weight: 600; }
+    .ao-vivo::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--barra-verde); animation: pulsa 1.4s infinite; }
+    @keyframes pulsa { 50% { opacity: .3; } }
+  </style>
+</head>
+<body data-tela="monitoramento" data-titulo="Monitoramento das estações">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Uso em tempo real <span class="ao-vivo" id="ao-vivo">ao vivo</span></h2>
+        <p>GPU, CPU, memória e temperatura por estação. Recursos acima dos limites configurados ficam em vermelho.</p></div>
+      <div class="linha">
+        <select id="f-tipo" aria-label="Filtrar estações" style="width:auto"><option value="">Todas as estações</option><option value="local">RenderStation (local)</option><option value="nuvem">RenderCloud</option></select>
+        <button class="btn" id="pausar">Pausar atualização</button>
+        <button class="btn btn-escuro" id="limites">Configurar limites</button>
+      </div>
+    </div>
+
+    <div id="resumo-alerta"></div>
+    <section class="grade g2" id="estacoes"></section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    let vivo = true;
+    const L = () => db.limites;
+
+    function render() {
+      const tipo = $('f-tipo').value;
+      let excedidos = 0;
+      $('estacoes').innerHTML = db.estacoes.filter((e) => !tipo || e.tipo === tipo).map((e) => {
+        const passouGpu = (g) => g.uso > L().gpuUso || g.temp > L().gpuTemp;
+        const nPassou = e.gpus.filter(passouGpu).length + (e.cpu > L().cpuUso ? 1 : 0) + (e.ram > L().ramUso ? 1 : 0);
+        excedidos += nPassou;
+        const rec = (nome, v, lim) => `<div><div class="linha"><span>${nome}</span><b style="color:${lim && v > lim ? 'var(--vermelho)' : 'inherit'}">${v}%</b></div>${ui.barra(v, lim && v > lim ? 'vermelho' : '')}</div>`;
+        return `<article class="cartao estacao ${nPassou ? 'alerta' : ''}">
+          <header><div><h3>${e.nome}</h3><small>${e.id} · ${ui.esc(e.local)}</small></div>
+            <div class="linha">${nPassou ? `<span class="badge badge-vermelho">${nPassou} acima do limite</span>` : ''}${ui.badge(e.status)}</div></header>
+          <div class="recursos">${rec('CPU', e.cpu, L().cpuUso)}${rec('RAM', e.ram, L().ramUso)}${rec('Disco', e.disco)}</div>
+          <div class="gpus">${e.gpus.map((g, i) => `<div class="gpu ${passouGpu(g) ? 'passou' : ''}">
+              <div class="linha"><span>GPU ${i + 1}</span><b class="${g.temp > L().gpuTemp ? 't-alta' : ''}">${g.temp} °C</b></div>
+              ${ui.barra(g.uso, g.uso > L().gpuUso ? 'vermelho' : g.uso > 70 ? 'laranja' : '')}
+              <div class="linha"><small>uso</small><b class="${g.uso > L().gpuUso ? 't-alta' : ''}">${g.uso}%</b></div></div>`).join('')}</div>
+          <small>${e.tipo === 'local' ? '5× RTX 5090 · 3× Ryzen 9 9900X · 350 GB DDR5 · 100 TB' : `Nó de nuvem · ${e.gpus.length} GPUs neste nó · ${db.nuvem.gpusEmUso}/${db.nuvem.gpusTotais} em uso no cluster`}</small>
+        </article>`;
+      }).join('');
+      $('resumo-alerta').innerHTML = excedidos
+        ? `<div class="aviso aviso-erro"><b>${excedidos} recurso(s) acima dos limites</b> (GPU ${L().gpuUso}% · ${L().gpuTemp} °C · CPU ${L().cpuUso}% · RAM ${L().ramUso}%). Considere redistribuir jobs ou mandar parte para a nuvem.</div>`
+        : `<div class="aviso aviso-ok">Todas as estações dentro dos limites configurados.</div>`;
+    }
+
+    // Variação simulada dos sensores
+    const vari = (v, amp, min = 0, max = 100) => Math.max(min, Math.min(max, Math.round(v + (Math.random() - .5) * amp)));
+    setInterval(() => {
+      if (!vivo) return;
+      db.estacoes.forEach((e) => {
+        if (e.status !== 'online') return;
+        e.cpu = vari(e.cpu, 8, 5); e.ram = vari(e.ram, 4, 10);
+        e.gpus.forEach((g) => { if (g.uso > 5) { g.uso = vari(g.uso, 6, 5); g.temp = vari(g.temp, 3, 40, 92); } });
+      });
+      render();
+    }, 2000);
+
+    $('f-tipo').onchange = render;
+    $('pausar').onclick = () => { vivo = !vivo; $('pausar').textContent = vivo ? 'Pausar atualização' : 'Retomar atualização'; $('ao-vivo').style.visibility = vivo ? 'visible' : 'hidden'; };
+    $('limites').onclick = () => ui.modal({ titulo: 'Limites de alerta', corpo: `
+        <p class="suave">Quando um recurso passa do limite, ele é destacado aqui e um alerta é registrado em "Alertas e falhas".</p>
+        <div class="grade g2">
+          <div class="campo"><label for="l-gu">Uso de GPU (%)</label><input type="number" id="l-gu" min="50" max="100" value="${L().gpuUso}"></div>
+          <div class="campo"><label for="l-gt">Temperatura de GPU (°C)</label><input type="number" id="l-gt" min="60" max="100" value="${L().gpuTemp}"></div>
+          <div class="campo"><label for="l-cu">Uso de CPU (%)</label><input type="number" id="l-cu" min="50" max="100" value="${L().cpuUso}"></div>
+          <div class="campo"><label for="l-ru">Uso de RAM (%)</label><input type="number" id="l-ru" min="50" max="100" value="${L().ramUso}"></div>
+        </div>`,
+      acoes: [{ texto: 'Cancelar' }, { texto: 'Salvar limites', classe: 'btn btn-primario', onClick: (fechar) => {
+        db.limites = { gpuUso: +$('l-gu').value, gpuTemp: +$('l-gt').value, cpuUso: +$('l-cu').value, ramUso: +$('l-ru').value };
+        RT.salvar(); fechar(); render(); ui.toast('Limites atualizados.');
+      } }] });
+    render();
+  }
+  </script>
+</body>
+</html>
