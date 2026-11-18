@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alertas e falhas · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 3 · Alertas e falhas (história 08) */
+    .alerta-item { display: flex; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--borda); cursor: pointer; }
+    .alerta-item:hover { background: var(--superficie-2); }
+    .alerta-item.nao-lido { background: var(--laranja-suave); }
+    .alerta-item .novo { font-size: 11px; font-weight: 700; color: var(--laranja-texto); margin-left: 6px; }
+    .alerta-item .corpo { flex: 1; min-width: 0; }
+    .icone-tipo { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; flex: none; font-weight: 800; color: #fff; }
+    .t-erro { background: var(--perigo); } .t-limite { background: var(--laranja-acao); } .t-conclusao { background: #1f7a52; } .t-sistema { background: #4f6478; }
+    .notif label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 400; padding: 8px 0; border-bottom: 1px solid var(--borda); margin: 0; }
+    .notif label:last-child { border-bottom: 0; }
+    .notif input { accent-color: var(--laranja); width: 18px; height: 18px; }
+  </style>
+</head>
+<body data-tela="alertas" data-titulo="Alertas e falhas">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Ocorrências</h2><p>Conclusões, erros e limites excedidos, com data, motivo e o job ou estação relacionados.</p></div>
+      <button class="btn" id="marcar-todos">Marcar todos como lidos</button>
+    </div>
+
+    <section class="grade g-2-1">
+      <div class="cartao sem-padding">
+        <header>
+          <div class="abas" id="abas" style="margin:0;border:0">
+            <button data-t="" class="ativa">Todos</button><button data-t="erro">Erros</button><button data-t="limite">Limites</button><button data-t="conclusao">Conclusões</button><button data-t="sistema">Sistema</button>
+          </div>
+          <label class="linha" style="font-weight:400;margin:0"><input type="checkbox" id="so-nao-lidos"> Só não lidos</label>
+        </header>
+        <div id="lista" style="margin-top:8px"></div>
+      </div>
+
+      <div class="grade" style="gap:16px;align-content:start">
+        <div class="cartao notif"><header><h3>Me notificar quando…</h3></header>
+          <label>Um job meu terminar <input type="checkbox" checked></label>
+          <label>Um job der erro <input type="checkbox" checked></label>
+          <label>Uma estação passar do limite <input type="checkbox" checked></label>
+          <label>Backup falhar <input type="checkbox" checked></label>
+          <label>Enviar também por e-mail <input type="checkbox"></label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    let filtro = '';
+    const SIMB = { erro: ui.icone('erro'), limite: ui.icone('limite'), conclusao: ui.icone('check'), sistema: ui.icone('info') };
+    const NOME = { erro: 'Erro', limite: 'Limite excedido', conclusao: 'Conclusão', sistema: 'Sistema' };
+
+    function render() {
+      let lista = db.alertas.filter((a) => !filtro || a.tipo === filtro);
+      if ($('so-nao-lidos').checked) lista = lista.filter((a) => !a.lido);
+      $('lista').innerHTML = lista.map((a) => `
+        <div class="alerta-item ${a.lido ? '' : 'nao-lido'}" data-id="${a.id}" tabindex="0" role="button">
+          <div class="icone-tipo t-${a.tipo}" aria-hidden="true">${SIMB[a.tipo]}</div>
+          <div class="corpo"><strong>${ui.esc(a.titulo)}</strong>${a.lido ? '' : '<span class="novo">não lido</span>'}<div class="suave">${ui.esc(a.motivo)}</div>
+            <small>${a.data.split(' ')[0].split('-').reverse().join('/')} ${a.data.split(' ')[1] || ''} · ${a.job ? `job <b>${a.job}</b> · ` : ''}estação <b>${ui.esc(a.estacao)}</b></small></div>
+          ${ui.badge(a.tipo)}</div>`).join('') || '<div class="vazio">Nenhum alerta com esse filtro.</div>';
+      const c = (t) => db.alertas.filter((a) => a.tipo === t).length;
+      const ROT = { '': 'Todos', erro: 'Erros', limite: 'Limites', conclusao: 'Conclusões', sistema: 'Sistema' };
+      document.querySelectorAll('#abas button').forEach((b) => { b.innerHTML = `${ROT[b.dataset.t]} <span class="conta">${b.dataset.t ? c(b.dataset.t) : db.alertas.length}</span>`; });
+    }
+
+    function abrir(id) {
+      const a = db.alertas.find((x) => x.id === id);
+      a.lido = true; RT.salvar(); render();
+      const j = a.job && RT.job(a.job);
+      const acoes = [{ texto: 'Fechar' }];
+      if (j) acoes.push({ texto: 'Abrir job', classe: 'btn btn-primario', onClick: () => location.href = 'job.html?id=' + j.id });
+      if (a.tipo === 'limite') acoes.push({ texto: 'Ver estação', classe: 'btn btn-escuro', onClick: () => location.href = 'monitoramento.html' });
+      ui.modal({ titulo: a.titulo, corpo: `
+        <dl style="display:grid;grid-template-columns:110px 1fr;gap:6px 12px;margin:0">
+          <dt class="suave">Tipo</dt><dd style="margin:0">${ui.badge(a.tipo)}</dd>
+          <dt class="suave">Data</dt><dd style="margin:0">${a.data}</dd>
+          <dt class="suave">Motivo</dt><dd style="margin:0">${ui.esc(a.motivo)}</dd>
+          <dt class="suave">Job</dt><dd style="margin:0">${j ? `${j.id} · ${ui.esc(j.arquivo)} (${j.status})` : '—'}</dd>
+          <dt class="suave">Estação</dt><dd style="margin:0">${ui.esc(a.estacao)}</dd>
+          <dt class="suave">Código</dt><dd style="margin:0" class="mono">${a.id}</dd></dl>
+        ${a.tipo === 'erro' ? '<div class="aviso aviso-atencao" style="margin-top:12px">Sugestão: confira se todas as texturas estão no pacote e reenvie o job pela fila.</div>' : ''}`, acoes });
+    }
+
+    $('lista').onclick = (e) => { const it = e.target.closest('.alerta-item'); if (it) abrir(it.dataset.id); };
+    $('lista').onkeydown = (e) => { const it = e.target.closest('.alerta-item'); if (it && e.key === 'Enter') abrir(it.dataset.id); };
+    $('abas').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; filtro = b.dataset.t; document.querySelectorAll('#abas button').forEach((x) => x.classList.toggle('ativa', x === b)); render(); };
+    $('so-nao-lidos').onchange = render;
+    $('marcar-todos').onclick = () => { db.alertas.forEach((a) => a.lido = true); RT.salvar(); render(); ui.toast('Todos os alertas marcados como lidos.'); };
+    document.querySelectorAll('.notif input').forEach((i) => i.onchange = () => ui.toast('Preferência de notificação salva.'));
+    render();
+  }
+  </script>
+</body>
+</html>
