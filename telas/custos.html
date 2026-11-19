@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consumo e custos · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 4 · Consumo e custos (história 11) */
+    .grafico { display: flex; align-items: flex-end; gap: 14px; height: 220px; padding: 10px 4px 0; border-bottom: 1px solid var(--borda); }
+    .coluna { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; }
+    .coluna .val { font-size: 12px; font-weight: 600; color: var(--texto-2); font-variant-numeric: tabular-nums; }
+    .coluna .bar { width: 100%; max-width: 54px; background: var(--turquesa); border-radius: 6px 6px 0 0; transition: height .4s; }
+    .coluna.atual .bar { background: var(--laranja); }
+    .meses { display: flex; gap: 14px; padding: 6px 4px 0; }
+    .meses span { flex: 1; text-align: center; font-size: 12px; color: var(--texto-2); }
+    .barra-proj { display: flex; align-items: center; gap: 10px; }
+    .barra-proj .barra { flex: 1; }
+  </style>
+</head>
+<body data-tela="custos" data-titulo="Consumo e custos">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Gastos com renderização</h2><p>Horas de GPU consumidas, tarifa aplicada e custo por projeto e por período.</p></div>
+      <div class="filtros">
+        <select id="periodo" aria-label="Período"><option value="1">Este mês</option><option value="3">Últimos 3 meses</option><option value="6" selected>Últimos 6 meses</option></select>
+        <button class="btn" id="exportar">Exportar CSV</button>
+      </div>
+    </div>
+
+    <dl class="fatos" id="kpis"></dl>
+
+    <section class="grade g-2-1">
+      <div class="cartao"><header><h3>Horas de GPU por mês</h3><small id="legenda"></small></header>
+        <div class="grafico" id="grafico" role="img" aria-label="Gráfico de horas de GPU por mês"></div><div class="meses" id="meses"></div></div>
+      <div class="cartao"><header><h3>Tarifas aplicadas</h3></header>
+        <table><tbody>
+          <tr><td>RenderCloud (nuvem)</td><td class="num"><b id="t-nuvem"></b> / h GPU</td></tr>
+          <tr><td>RenderStation (local)</td><td class="num"><b id="t-local"></b> / h GPU</td></tr>
+          <tr><td>Híbrido</td><td class="num">parte local + parte nuvem</td></tr>
+        </tbody></table>
+        <div class="aviso aviso-info" style="margin-top:12px">O custo local considera energia e manutenção do servidor. Pay-per-use: sem mensalidade mínima na nuvem.</div>
+        <div class="campo" style="margin-top:14px"><label for="orcamento">Orçamento mensal de nuvem</label><input type="number" id="orcamento" value="1000" step="50"><small id="orc-txt"></small></div>
+      </div>
+    </section>
+
+    <section class="cartao sem-padding">
+      <header><h3>Custo por projeto</h3></header>
+      <div class="tabela-wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Projeto</th><th>Cliente</th><th class="num">Jobs</th><th class="num">Horas GPU nuvem</th><th class="num">Horas GPU local</th><th>Participação</th><th class="num">Custo total</th></tr></thead>
+        <tbody id="tbody"></tbody><tfoot id="tfoot"></tfoot></table></div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    const T = db.tarifas;
+    $('t-nuvem').textContent = ui.brl(T.nuvemHoraGPU); $('t-local').textContent = ui.brl(T.localHoraGPU);
+
+    // Divide as horas de cada job entre nuvem e local conforme o destino
+    function porProjeto() {
+      return db.projetos.map((p) => {
+        const js = db.jobs.filter((j) => j.projeto === p.id);
+        let nuvem = 0, local = 0;
+        js.forEach((j) => { const h = j.horasGPU || 0; if (j.destino === 'Nuvem') nuvem += h; else if (j.destino === 'Local') local += h; else { nuvem += h / 2; local += h / 2; } });
+        return { p, jobs: js.length, nuvem, local, custo: nuvem * T.nuvemHoraGPU + local * T.localHoraGPU };
+      }).sort((a, b) => b.custo - a.custo);
+    }
+
+    function render() {
+      const n = +$('periodo').value;
+      const meses = db.consumoMensal.slice(-n);
+      const horas = meses.reduce((s, m) => s + m.horas, 0);
+      const custoPeriodo = horas * T.nuvemHoraGPU;
+      const atual = db.consumoMensal[db.consumoMensal.length - 1];
+      const anterior = db.consumoMensal[db.consumoMensal.length - 2];
+      const varia = Math.round((atual.horas / anterior.horas - 1) * 100);
+      const dia = new Date().getDate(); const diasMes = 30;
+      const proj = Math.round(atual.horas / Math.max(dia, 1) * diasMes);
+
+      $('kpis').innerHTML = `
+        <div><dt>Horas de GPU (${n === 1 ? 'novembro' : `${n} meses`})</dt><dd>${horas} h</dd></div>
+        <div><dt>Custo de nuvem no período</dt><dd>${ui.brl(custoPeriodo)}</dd></div>
+        <div class="${varia > 0 ? 'ruim' : ''}"><dt>Novembro até agora</dt><dd>${ui.brl(atual.horas * T.nuvemHoraGPU)}</dd><small>${Math.abs(varia)}% ${varia > 0 ? 'a mais' : 'a menos'} que outubro</small></div>
+        <div><dt>Projeção de novembro</dt><dd>${ui.brl(proj * T.nuvemHoraGPU)}</dd><small>${proj} h no ritmo atual</small></div>`;
+
+      const max = Math.max(...meses.map((m) => m.horas));
+      $('grafico').innerHTML = meses.map((m, i) => `<div class="coluna ${i === meses.length - 1 ? 'atual' : ''}" title="${m.mes}: ${m.horas} h · ${ui.brl(m.horas * T.nuvemHoraGPU)}">
+        <span class="val">${m.horas} h</span><div class="bar" style="height:${(m.horas / max) * 80}%"></div></div>`).join('');
+      $('meses').innerHTML = meses.map((m) => `<span>${m.mes}</span>`).join('');
+      $('legenda').innerHTML = '<span style="color:var(--laranja)">■</span> mês atual (parcial)';
+
+      const linhas = porProjeto(); const total = linhas.reduce((s, l) => s + l.custo, 0) || 1;
+      $('tbody').innerHTML = linhas.map((l) => `<tr><td><a href="projetos.html?id=${l.p.id}">${ui.esc(l.p.nome)}</a></td><td>${ui.esc(l.p.cliente)}</td>
+        <td class="num">${l.jobs}</td><td class="num">${ui.num(l.nuvem)}</td><td class="num">${ui.num(l.local)}</td>
+        <td><div class="barra-proj">${ui.barra(l.custo / total * 100, 'laranja')}<small>${Math.round(l.custo / total * 100)}%</small></div></td>
+        <td class="num"><b>${ui.brl(l.custo)}</b></td></tr>`).join('');
+      $('tfoot').innerHTML = `<tr><td colspan="6"><b>Total</b></td><td class="num"><b>${ui.brl(total)}</b></td></tr>`;
+
+      const orc = +$('orcamento').value; const gastoMes = atual.horas * T.nuvemHoraGPU;
+      $('orc-txt').innerHTML = gastoMes > orc ? `<span style="color:var(--vermelho)">Orçamento ultrapassado em ${ui.brl(gastoMes - orc)}.</span>` : `${Math.round(gastoMes / orc * 100)}% usado (${ui.brl(orc - gastoMes)} restantes).`;
+    }
+
+    $('periodo').onchange = render; $('orcamento').oninput = render;
+    $('exportar').onclick = () => {
+      const csv = 'projeto;cliente;jobs;horas_nuvem;horas_local;custo\n' + porProjeto().map((l) => [l.p.nome, l.p.cliente, l.jobs, l.nuvem.toFixed(1), l.local.toFixed(1), l.custo.toFixed(2)].join(';')).join('\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'rectech_custos.csv'; a.click();
+      ui.toast('CSV exportado.');
+    };
+    render();
+  }
+  </script>
+</body>
+</html>

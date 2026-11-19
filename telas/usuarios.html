@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Usuários e acessos · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 4 · Usuários e acessos (história 01) */
+    .matriz td, .matriz th { text-align: center; }
+    .matriz td:first-child, .matriz th:first-child { text-align: left; }
+    .sim { color: var(--verde); display: inline-flex; } .nao { color: var(--texto-2); }
+    .avatar-p { width: 30px; height: 30px; border-radius: 50%; background: var(--marinho-3); color: #fff; display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; margin-right: 8px; }
+    tr.inativo td { opacity: .55; }
+  </style>
+</head>
+<body data-tela="usuarios" data-titulo="Usuários e acessos">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Equipe</h2><p>Cada usuário tem um perfil. O perfil define quais telas e ações ele pode usar, protegendo os projetos dos clientes.</p></div>
+      <button class="btn btn-primario" id="novo">+ Novo usuário</button>
+    </div>
+
+    <section class="cartao sem-padding">
+      <header><div class="filtros"><input type="search" id="busca" placeholder="Buscar nome ou e-mail" aria-label="Buscar usuário">
+        <select id="f-perfil" aria-label="Filtrar por perfil"><option value="">Todos os perfis</option></select></div></header>
+      <div class="tabela-wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th class="num">Ações</th></tr></thead>
+        <tbody id="tbody"></tbody></table></div>
+    </section>
+
+    <section class="cartao sem-padding">
+      <header><h3>O que cada perfil pode fazer</h3></header>
+      <div class="tabela-wrap" style="margin-top:12px"><table class="matriz" id="matriz"></table></div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    const SIM = `<span class="sim" role="img" aria-label="pode">${ui.icone('check')}</span>`, NAO = '<span class="nao" role="img" aria-label="não pode">—</span>';
+    $('f-perfil').innerHTML += RT.PERFIS.map((p) => `<option>${p}</option>`).join('');
+
+    function render() {
+      const q = $('busca').value.trim().toLowerCase(); const fp = $('f-perfil').value;
+      const us = db.usuarios.filter((u) => (u.nome + u.email).toLowerCase().includes(q) && (!fp || u.perfil === fp));
+      $('tbody').innerHTML = us.map((u) => `<tr class="${u.ativo ? '' : 'inativo'}">
+        <td><div class="linha" style="flex-wrap:nowrap;gap:0"><span class="avatar-p">${u.nome.split(' ').map((p) => p[0]).slice(0, 2).join('')}</span>
+          <div><b>${ui.esc(u.nome)}</b><br><small>${ui.esc(u.email)}</small></div></div></td>
+        <td>${ui.esc(u.perfil)}</td>
+        <td>${u.ativo ? '<span class="badge badge-verde">Ativo</span>' : '<span class="badge badge-cinza">Desativado</span>'}</td>
+        <td>${u.ultimoAcesso}</td>
+        <td><div class="acoes"><button class="btn btn-peq" data-editar="${u.id}">Editar</button>
+          ${u.id === db.sessao.id ? '' : `<button class="btn btn-peq" data-ativar="${u.id}">${u.ativo ? 'Desativar' : 'Reativar'}</button>`}</div></td></tr>`).join('')
+        || '<tr><td colspan="5" class="vazio">Nenhum usuário encontrado.</td></tr>';
+
+      const telas = RT.MENU.flatMap((g) => g.itens);
+      $('matriz').innerHTML = `<thead><tr><th>Tela / ação</th>${RT.PERFIS.map((p) => `<th>${p}</th>`).join('')}</tr></thead>
+        <tbody>${telas.map((t) => `<tr><td>${t.nome}</td>${RT.PERFIS.map((p) => `<td>${t.perfis.includes(p) ? SIM : NAO}</td>`).join('')}</tr>`).join('')}
+        <tr><td>Reordenar e mudar prioridade da fila</td>${RT.PERFIS.map((p) => `<td>${['Administrador', 'Operador'].includes(p) ? SIM : NAO}</td>`).join('')}</tr>
+        <tr><td>Pausar/cancelar jobs de outras pessoas</td>${RT.PERFIS.map((p) => `<td>${['Administrador', 'Operador'].includes(p) ? SIM : NAO}</td>`).join('')}</tr></tbody>`;
+    }
+
+    function formulario(u) {
+      const novo = !u; u = u || { nome: '', email: '', perfil: 'Editor de vídeo', ativo: true };
+      ui.modal({ titulo: novo ? 'Novo usuário' : 'Editar usuário', corpo: `
+        <div class="campo"><label for="u-nome">Nome completo</label><input type="text" id="u-nome" value="${ui.esc(u.nome)}"></div>
+        <div class="campo"><label for="u-email">E-mail corporativo</label><input type="email" id="u-email" value="${ui.esc(u.email)}" ${novo ? '' : 'disabled'}></div>
+        <div class="campo"><label for="u-perfil">Perfil de acesso</label><select id="u-perfil">${RT.PERFIS.map((p) => `<option ${p === u.perfil ? 'selected' : ''}>${p}</option>`).join('')}</select>
+          <small id="u-desc"></small></div>
+        ${novo ? '<div class="aviso aviso-info">A pessoa recebe um e-mail para criar a própria senha no primeiro acesso.</div>' : ''}
+        <div id="u-erro" class="erro-campo"></div>`,
+        acoes: [{ texto: 'Cancelar' }, { texto: novo ? 'Criar usuário' : 'Salvar', classe: 'btn btn-primario', onClick: (fechar) => {
+          const nome = $('u-nome').value.trim(), email = $('u-email').value.trim().toLowerCase();
+          if (!nome) return $('u-erro').textContent = 'Informe o nome.';
+          if (novo && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return $('u-erro').textContent = 'E-mail inválido.';
+          if (novo && db.usuarios.some((x) => x.email === email)) return $('u-erro').textContent = 'Já existe um usuário com esse e-mail.';
+          if (novo) db.usuarios.push({ id: RT.proximoId('U', db.usuarios), nome, email, perfil: $('u-perfil').value, ativo: true, ultimoAcesso: 'nunca' });
+          else Object.assign(u, { nome, perfil: $('u-perfil').value });
+          RT.salvar(); fechar(); render(); ui.toast(novo ? `Usuário criado. Convite enviado para ${email}.` : 'Usuário atualizado.');
+        } }] });
+      const desc = () => { const t = RT.MENU.flatMap((g) => g.itens).filter((i) => i.perfis.includes($('u-perfil').value)).map((i) => i.nome); $('u-desc').textContent = 'Acessa: ' + t.join(', ') + '.'; };
+      $('u-perfil').onchange = desc; desc();
+    }
+
+    $('tbody').onclick = (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.editar) formulario(db.usuarios.find((u) => u.id === b.dataset.editar));
+      if (b.dataset.ativar) {
+        const u = db.usuarios.find((x) => x.id === b.dataset.ativar);
+        ui.confirmar(u.ativo ? 'Desativar usuário' : 'Reativar usuário', `${u.ativo ? 'Desativar' : 'Reativar'} o acesso de <b>${ui.esc(u.nome)}</b>?${u.ativo ? ' A pessoa não consegue mais entrar, mas os jobs e projetos dela continuam.' : ''}`,
+          u.ativo ? 'Desativar' : 'Reativar', () => { u.ativo = !u.ativo; RT.salvar(); render(); ui.toast('Acesso atualizado.'); }, u.ativo);
+      }
+    };
+    $('novo').onclick = () => formulario();
+    $('busca').oninput = render; $('f-perfil').onchange = render;
+    render();
+  }
+  </script>
+</body>
+</html>

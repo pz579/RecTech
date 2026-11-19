@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backups · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 4 · Backups e recuperação (história 12) */
+    .itens-rec label { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; padding: 6px 0; margin: 0; }
+    .itens-rec input { margin-top: 3px; accent-color: var(--laranja); }
+    .etapas { list-style: none; padding: 0; margin: 10px 0 0; }
+    .etapas li { padding: 5px 0; display: flex; gap: 8px; align-items: center; }
+    .etapas li::before { content: '○'; color: var(--texto-2); width: 16px; }
+    .etapas li.ok::before { content: '●'; color: var(--verde); }
+    .etapas li.rodando::before { content: '…'; color: var(--laranja-acao); }
+  </style>
+</head>
+<body data-tela="backups" data-titulo="Backups e recuperação">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Cópias de segurança</h2><p>Backups automáticos todo dia às 03:00 (incremental) e completo aos domingos. Use para retomar a operação após uma falha.</p></div>
+      <button class="btn btn-escuro" id="agora">Fazer backup agora</button>
+    </div>
+
+    <dl class="fatos" id="kpis"></dl>
+
+    <section class="cartao sem-padding">
+      <header><h3>Backups disponíveis</h3></header>
+      <div class="tabela-wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Código</th><th>Data</th><th>Tipo</th><th>O que contém</th><th>Onde está</th><th class="num">Tamanho</th><th>Situação</th><th class="num"></th></tr></thead>
+        <tbody id="tbody"></tbody></table></div>
+    </section>
+
+    <section class="cartao">
+      <header><h3>Histórico de recuperações</h3></header>
+      <div id="historico"></div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    const fmt = (d) => d.split(' ')[0].split('-').reverse().join('/') + ' ' + (d.split(' ')[1] || '');
+
+    function render() {
+      const ok = db.backups.filter((b) => b.status === 'ok');
+      const falhas = db.backups.filter((b) => b.status === 'falhou').length;
+      $('kpis').innerHTML = `
+        <div><dt>Último backup válido</dt><dd>${fmt(ok[0].data)}</dd><small>${ok[0].tipo.toLowerCase()} · ${ok[0].tamanho}</small></div>
+        <div><dt>Disponíveis</dt><dd>${ok.length}</dd><small>retenção de 30 dias</small></div>
+        <div class="${falhas ? 'ruim' : ''}"><dt>Falhas recentes</dt><dd>${falhas}</dd><small>últimos 10 dias</small></div>
+        <div><dt>Recuperações</dt><dd>${db.historicoRecuperacao.length}</dd></div>`;
+      $('tbody').innerHTML = db.backups.map((b) => `<tr><td class="mono">${b.id}</td><td>${fmt(b.data)}</td><td>${b.tipo}</td><td>${b.escopo}</td><td>${b.local}</td>
+        <td class="num">${b.tamanho}</td><td>${ui.badge(b.status)}</td>
+        <td><div class="acoes">${b.status === 'ok' ? `<button class="btn btn-peq" data-rec="${b.id}">Recuperar</button>` : `<button class="btn btn-peq" data-log="${b.id}">Ver motivo</button>`}</div></td></tr>`).join('');
+      $('historico').innerHTML = db.historicoRecuperacao.length
+        ? `<table><thead><tr><th>Data</th><th>Backup</th><th>Itens</th><th>Por</th><th>Resultado</th></tr></thead><tbody>${db.historicoRecuperacao.map((h) => `<tr><td>${fmt(h.data)}</td><td class="mono">${h.backup}</td><td>${h.itens.join(', ')}</td><td>${ui.esc(h.por)}</td><td>${ui.badge(h.resultado)}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="suave">Nenhuma recuperação feita ainda.</p>';
+    }
+
+    function recuperar(b) {
+      const completo = b.tipo === 'Completo';
+      const ITENS = [['Projetos e versões de entrada', true], ['Fila de jobs e configurações', true], ['Usuários e permissões', false], ['Saídas renderizadas', completo]];
+      ui.modal({ titulo: `Recuperar ${b.id}`, corpo: `
+        <p>Backup de <b>${fmt(b.data)}</b> (${b.tipo.toLowerCase()}, ${b.tamanho}).</p>
+        <div class="campo itens-rec"><label style="font-weight:600">O que recuperar</label>
+          ${ITENS.map(([n, on], i) => `<label><input type="checkbox" value="${n}" ${on ? 'checked' : ''} ${i === 3 && !completo ? 'disabled' : ''}> <span>${n}${i === 3 && !completo ? ' <small>(só existe em backup completo)</small>' : ''}</span></label>`).join('')}</div>
+        <div class="aviso aviso-atencao">Os itens marcados voltam ao estado de ${fmt(b.data)}. Alterações feitas depois disso nesses itens serão substituídas.</div>
+        <ul class="etapas" id="etapas" hidden></ul><div id="resultado" style="margin-top:10px"></div>`,
+        acoes: [{ texto: 'Cancelar' }, { texto: 'Iniciar recuperação', classe: 'btn btn-perigo', onClick: (fechar, fundo) => {
+          const itens = [...fundo.querySelectorAll('.itens-rec input:checked')].map((i) => i.value);
+          if (!itens.length) return ui.toast('Escolha pelo menos um item.', 'erro');
+          fundo.querySelectorAll('footer button, .itens-rec input').forEach((x) => x.disabled = true);
+          const etapas = ['Verificando integridade do backup', 'Copiando dados do armazenamento', ...itens.map((i) => 'Restaurando: ' + i), 'Conferindo consistência'];
+          const ul = fundo.querySelector('#etapas'); ul.hidden = false;
+          ul.innerHTML = etapas.map((e) => `<li>${e}</li>`).join('');
+          const lis = [...ul.children]; let i = 0;
+          const passo = () => {
+            if (i > 0) lis[i - 1].className = 'ok';
+            if (i < lis.length) { lis[i].className = 'rodando'; i++; setTimeout(passo, 700); return; }
+            db.historicoRecuperacao.unshift({ data: ui.agora(), backup: b.id, itens, por: db.sessao.nome, resultado: 'ok' });
+            RT.salvar(); render();
+            fundo.querySelector('#resultado').innerHTML = `<div class="aviso aviso-ok"><b>Recuperação concluída.</b> ${itens.length} item(ns) restaurado(s) de ${b.id}. Nenhum erro encontrado.</div>`;
+            const rod = fundo.querySelector('footer'); rod.innerHTML = '';
+            const ok = document.createElement('button'); ok.className = 'btn btn-primario'; ok.textContent = 'Fechar'; ok.onclick = fechar; rod.appendChild(ok);
+          };
+          passo();
+        } }] });
+    }
+
+    $('tbody').onclick = (e) => {
+      const r = e.target.closest('[data-rec]'); const l = e.target.closest('[data-log]');
+      if (r) recuperar(db.backups.find((b) => b.id === r.dataset.rec));
+      if (l) ui.modal({ titulo: 'Backup ' + l.dataset.log + ' falhou', corpo: '<p><b>Motivo:</b> sem conexão com o armazenamento de destino (Colocation SP) entre 03:00 e 03:20.</p><p class="suave">O backup do dia seguinte rodou normalmente. Alerta registrado para o operador.</p>' });
+    };
+    $('agora').onclick = () => ui.confirmar('Backup manual', 'Iniciar um backup incremental agora? Pode deixar a fila um pouco mais lenta por alguns minutos.', 'Iniciar backup', () => {
+      ui.toast('Backup em andamento…', 'aviso');
+      setTimeout(() => {
+        db.backups.unshift({ id: RT.proximoId('BK-', db.backups), data: ui.agora(), tipo: 'Incremental', escopo: 'Projetos + fila + configurações', tamanho: '12 GB', local: 'Colocation SP (cópia 2)', status: 'ok' });
+        RT.salvar(); render(); ui.toast('Backup concluído.');
+      }, 1800);
+    }, false);
+    render();
+  }
+  </script>
+</body>
+</html>

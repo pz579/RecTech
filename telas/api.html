@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API e chaves · recTech</title>
+  <link rel="icon" href="../assets/img/logo.svg">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <style>
+    /* PARTE 4 · API e chaves (histórias 09 e 10) */
+    pre.codigo { background: var(--log); border: 1px solid var(--borda); color: #cfe0ef; font-family: var(--mono); font-size: 12.5px; border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 8px 0 0; line-height: 1.55; }
+    pre.codigo .c { color: #6f8aa3; } pre.codigo .s { color: #f3c776; } pre.codigo .k { color: #7fd1dc; }
+    .endpoint { border: 1px solid var(--borda); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+    .metodo { font-family: var(--mono); font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 5px; color: #fff; margin-right: 8px; }
+    .post { background: #1f7a52; } .get { background: #265f99; } .delete { background: var(--perigo); }
+    .chave-nova { font-family: var(--mono); background: var(--a-atencao); color: var(--a-atencao-t); border: 1px dashed var(--amarelo); padding: 10px 12px; border-radius: 8px; word-break: break-all; font-size: 13px; }
+    .perms label { display: flex; gap: 8px; align-items: center; font-weight: 400; margin: 4px 0; }
+    tr.revogada td { opacity: .5; }
+    .tag { display: inline-block; font-family: var(--mono); font-size: 11.5px; background: var(--b-cinza); color: var(--b-cinza-t); border-radius: 4px; padding: 1px 6px; margin: 1px; }
+  </style>
+</head>
+<body data-tela="api" data-titulo="API e chaves de acesso">
+  <main id="conteudo">
+    <div class="cabecalho-tela">
+      <div><h2>Integrações</h2><p>Crie chaves para que o pipeline do seu estúdio envie jobs e consulte o andamento automaticamente.</p></div>
+      <button class="btn btn-primario" id="nova">+ Nova chave</button>
+    </div>
+
+    <section class="cartao sem-padding">
+      <header><h3>Chaves de API</h3></header>
+      <div class="tabela-wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Nome</th><th>Chave</th><th>Permissões</th><th>Criada</th><th>Validade</th><th>Último uso</th><th>Situação</th><th class="num"></th></tr></thead>
+        <tbody id="tbody"></tbody></table></div>
+    </section>
+
+    <section class="cartao">
+      <header><h3>Referência rápida da API</h3><small>Base: <code>https://api.rectech.com.br/v1</code> · autenticação: <code>Authorization: Bearer &lt;chave&gt;</code></small></header>
+      <div class="abas" id="abas"><button data-ex="criar" class="ativa">Enviar job</button><button data-ex="consultar">Consultar job</button><button data-ex="erros">Erros</button></div>
+      <div id="exemplo"></div>
+      <div style="margin-top:16px">
+        <div class="endpoint"><span class="metodo post">POST</span><code>/jobs</code> <small class="suave">· cria um job (permissão <span class="tag">jobs:criar</span>)</small></div>
+        <div class="endpoint"><span class="metodo get">GET</span><code>/jobs/{id}</code> <small class="suave">· status e progresso (<span class="tag">jobs:ler</span>)</small></div>
+        <div class="endpoint"><span class="metodo get">GET</span><code>/jobs?status=renderizando</code> <small class="suave">· lista jobs (<span class="tag">jobs:ler</span>)</small></div>
+        <div class="endpoint"><span class="metodo delete">DELETE</span><code>/jobs/{id}</code> <small class="suave">· cancela um job (<span class="tag">jobs:cancelar</span>)</small></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../assets/js/dados.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+  if (RT.liberada()) {
+    const { db } = RT; const ui = RT.ui; const $ = (id) => document.getElementById(id);
+    const PERMS = { 'jobs:criar': 'Enviar jobs', 'jobs:ler': 'Consultar jobs e progresso', 'jobs:cancelar': 'Pausar e cancelar jobs', 'projetos:ler': 'Listar projetos e baixar saídas' };
+    const vencida = (k) => k.validade < new Date().toISOString().slice(0, 10);
+
+    function render() {
+      $('tbody').innerHTML = db.chaves.map((k) => {
+        const sit = !k.ativa ? '<span class="badge badge-cinza">Revogada</span>' : vencida(k) ? '<span class="badge badge-vermelho">Expirada</span>' : '<span class="badge badge-verde">Ativa</span>';
+        return `<tr class="${k.ativa ? '' : 'revogada'}"><td><b>${ui.esc(k.nome)}</b></td><td class="mono">${k.prefixo}••••••••</td>
+          <td>${k.permissoes.map((p) => `<span class="tag">${p}</span>`).join('')}</td><td>${k.criada.split('-').reverse().join('/')}</td>
+          <td>${k.validade.split('-').reverse().join('/')}</td><td>${k.ultimoUso}</td><td>${sit}</td>
+          <td><div class="acoes">${k.ativa ? `<button class="btn btn-peq" data-revogar="${k.id}">Revogar</button>` : ''}</div></td></tr>`;
+      }).join('');
+    }
+
+    const gerar = () => 'rt_live_' + Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, '0')).join('');
+
+    $('nova').onclick = () => {
+      const padrao = new Date(Date.now() + 180 * 864e5).toISOString().slice(0, 10);
+      ui.modal({ titulo: 'Nova chave de API', corpo: `
+        <div class="campo"><label for="k-nome">Nome da integração</label><input type="text" id="k-nome" placeholder="Ex.: Render farm do pipeline"></div>
+        <div class="campo perms"><label>Permissões</label>${Object.entries(PERMS).map(([p, d], i) => `<label><input type="checkbox" value="${p}" ${i < 2 ? 'checked' : ''}><span class="tag">${p}</span> ${d}</label>`).join('')}</div>
+        <div class="campo"><label for="k-val">Válida até</label><input type="date" id="k-val" value="${padrao}"><small>Chaves expiradas param de funcionar automaticamente.</small></div>
+        <div id="k-erro" class="erro-campo"></div>`,
+        acoes: [{ texto: 'Cancelar' }, { texto: 'Criar chave', classe: 'btn btn-primario', onClick: (fechar) => {
+          const nome = $('k-nome').value.trim();
+          const perms = [...document.querySelectorAll('.perms input:checked')].map((i) => i.value);
+          if (!nome) return $('k-erro').textContent = 'Dê um nome para a chave.';
+          if (!perms.length) return $('k-erro').textContent = 'Escolha pelo menos uma permissão.';
+          if ($('k-val').value <= new Date().toISOString().slice(0, 10)) return $('k-erro').textContent = 'A validade precisa ser uma data futura.';
+          const chave = gerar();
+          db.chaves.unshift({ id: RT.proximoId('KEY-', db.chaves), nome, prefixo: chave.slice(0, 12), permissoes: perms, criada: ui.agora().slice(0, 10), validade: $('k-val').value, ultimoUso: 'nunca', ativa: true });
+          RT.salvar(); fechar(); render();
+          // A chave completa só aparece agora (critério de aceite da história 09)
+          ui.modal({ titulo: 'Copie sua chave agora', corpo: `
+            <div class="aviso aviso-atencao" style="margin-bottom:12px"><b>Esta é a única vez que a chave completa aparece.</b> Depois só o início dela fica visível. Guarde em um cofre de senhas ou variável de ambiente.</div>
+            <div class="chave-nova" id="chave-txt">${chave}</div>`,
+            acoes: [{ texto: 'Copiar', classe: 'btn', onClick: () => { navigator.clipboard?.writeText(chave).then(() => ui.toast('Chave copiada.'), () => ui.toast('Selecione e copie manualmente.', 'aviso')); } },
+                    { texto: 'Já guardei', classe: 'btn btn-primario' }] });
+        } }] });
+    };
+
+    $('tbody').onclick = (e) => {
+      const b = e.target.closest('[data-revogar]'); if (!b) return;
+      const k = db.chaves.find((x) => x.id === b.dataset.revogar);
+      ui.confirmar('Revogar chave', `Revogar <b>${ui.esc(k.nome)}</b>? Integrações que usam <code>${k.prefixo}…</code> deixam de funcionar na hora. Isso não pode ser desfeito.`, 'Revogar', () => {
+        k.ativa = false; RT.salvar(); render(); ui.toast('Chave revogada.', 'aviso');
+      });
+    };
+
+    const EX = {
+      criar: `<span class="c"># Envia um job a partir do pipeline do estúdio</span>
+curl -X POST https://api.rectech.com.br/v1/jobs \\
+  -H <span class="s">"Authorization: Bearer rt_live_7f3a…"</span> \\
+  -F <span class="s">"pacote=@natal_cena_v3.zip"</span> \\
+  -F <span class="s">'config={"projeto":"PRJ-21","software":"blender","frames":"1-1440",
+       "resolucao":"3840x2160","formato":"exr+mp4","destino":"hibrido","prioridade":"urgente"}'</span>
+
+<span class="c"># Resposta 201</span>
+{ <span class="k">"id"</span>: <span class="s">"JOB-1046"</span>, <span class="k">"status"</span>: <span class="s">"na_fila"</span>, <span class="k">"posicao_fila"</span>: 2 }`,
+      consultar: `curl https://api.rectech.com.br/v1/jobs/JOB-1042 \\
+  -H <span class="s">"Authorization: Bearer rt_live_7f3a…"</span>
+
+<span class="c"># Resposta 200</span>
+{ <span class="k">"id"</span>: <span class="s">"JOB-1042"</span>, <span class="k">"status"</span>: <span class="s">"renderizando"</span>, <span class="k">"progresso"</span>: 62,
+  <span class="k">"frames_prontos"</span>: 893, <span class="k">"eta_segundos"</span>: 2280, <span class="k">"destino"</span>: <span class="s">"hibrido"</span>,
+  <span class="k">"saidas"</span>: [] }`,
+      erros: `<span class="c"># Todo erro devolve código HTTP + corpo explicando o problema</span>
+400  { <span class="k">"erro"</span>: <span class="s">"arquivo_ausente"</span>,   <span class="k">"detalhe"</span>: <span class="s">"tex/neve_normal.png referenciado pela cena e não enviado"</span> }
+401  { <span class="k">"erro"</span>: <span class="s">"chave_invalida"</span>,    <span class="k">"detalhe"</span>: <span class="s">"chave revogada ou expirada"</span> }
+403  { <span class="k">"erro"</span>: <span class="s">"sem_permissao"</span>,     <span class="k">"detalhe"</span>: <span class="s">"a chave não tem jobs:criar"</span> }
+404  { <span class="k">"erro"</span>: <span class="s">"job_nao_encontrado"</span> }
+429  { <span class="k">"erro"</span>: <span class="s">"limite_requisicoes"</span>, <span class="k">"tente_em_segundos"</span>: 30 }`
+    };
+    const mostrar = (k) => { $('exemplo').innerHTML = `<pre class="codigo">${EX[k]}</pre>`; };
+    $('abas').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; document.querySelectorAll('#abas button').forEach((x) => x.classList.toggle('ativa', x === b)); mostrar(b.dataset.ex); };
+    mostrar('criar'); render();
+  }
+  </script>
+</body>
+</html>
